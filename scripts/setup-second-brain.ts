@@ -74,13 +74,13 @@ const GROUP_SPECS: GroupSpec[] = [
     folder: 'query',
     model: 'claude-sonnet-4-6',
     needsInternalMessagingGroup: false,
-    instructionsTemplate: path.join(TEMPLATES_DIR, 'query-instructions.md'),
   },
   {
     name: 'Linter',
     folder: 'linter',
     model: 'claude-opus-4-7',
     needsInternalMessagingGroup: true,
+    instructionsTemplate: path.join(TEMPLATES_DIR, 'linter-instructions.md'),
   },
 ];
 
@@ -105,12 +105,10 @@ function createGroup(spec: GroupSpec, now: string): AgentGroup {
 
   let instructions: string | undefined;
   if (spec.instructionsTemplate) {
-    if (fs.existsSync(spec.instructionsTemplate)) {
+    try {
       instructions = fs.readFileSync(spec.instructionsTemplate, 'utf-8');
-    } else {
-      console.warn(
-        `Warning: instructions template not found: ${spec.instructionsTemplate}`,
-      );
+    } catch {
+      console.warn(`Warning: instructions template not found: ${spec.instructionsTemplate}`);
     }
   }
 
