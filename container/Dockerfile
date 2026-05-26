@@ -80,6 +80,13 @@ COPY agent-runner/package.json agent-runner/bun.lock ./
 RUN --mount=type=cache,target=/root/.bun/install/cache \
     bun install --frozen-lockfile
 
+# ---- onedrive MCP server deps ------------------------------------------------
+COPY mcp-servers/onedrive/package.json mcp-servers/onedrive/bun.lock ./mcp-servers/onedrive/
+RUN --mount=type=cache,target=/root/.bun/install/cache \
+    cd /app/mcp-servers/onedrive && bun install --frozen-lockfile
+
+COPY mcp-servers/onedrive/src/ ./mcp-servers/onedrive/src/
+
 # ---- pnpm + global Node CLIs -------------------------------------------------
 # Most stable first, most frequently bumped last. Bumping claude-code
 # (the most common change) only invalidates one layer.
