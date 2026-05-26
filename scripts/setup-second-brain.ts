@@ -7,6 +7,7 @@
  *
  * Run once after NanoClaw is set up. Does not require the service to be running.
  */
+import fs from 'fs';
 import path from 'path';
 
 import { DATA_DIR } from '../src/config.js';
@@ -56,7 +57,10 @@ interface GroupSpec {
   folder: string;
   model: string;
   needsInternalMessagingGroup: boolean;
+  instructionsTemplate?: string;
 }
+
+const TEMPLATES_DIR = path.resolve(import.meta.dirname, '../docs/agent-templates');
 
 const GROUP_SPECS: GroupSpec[] = [
   {
@@ -70,6 +74,7 @@ const GROUP_SPECS: GroupSpec[] = [
     folder: 'query',
     model: 'claude-sonnet-4-6',
     needsInternalMessagingGroup: false,
+    instructionsTemplate: path.join(TEMPLATES_DIR, 'query-instructions.md'),
   },
   {
     name: 'Linter',
@@ -98,7 +103,18 @@ function createGroup(spec: GroupSpec, now: string): AgentGroup {
   const ag = getAgentGroup(agId)!;
   console.log(`Created agent group: ${ag.id} (${spec.folder})`);
 
-  initGroupFilesystem(ag);
+  let instructions: string | undefined;
+  if (spec.instructionsTemplate) {
+    if (fs.existsSync(spec.instructionsTemplate)) {
+      instructions = fs.readFileSync(spec.instructionsTemplate, 'utf-8');
+    } else {
+      console.warn(
+        `Warning: instructions template not found: ${spec.instructionsTemplate}`,
+      );
+    }
+  }
+
+  initGroupFilesystem(ag, { instructions });
 
   updateContainerConfigScalars(ag.id, { model: spec.model });
   updateContainerConfigJson(ag.id, 'mcp_servers', { onedrive: onedriveMcpConfig });
