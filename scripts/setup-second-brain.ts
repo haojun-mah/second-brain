@@ -68,12 +68,14 @@ const GROUP_SPECS: GroupSpec[] = [
     folder: 'ingester',
     model: 'claude-sonnet-4-6',
     needsInternalMessagingGroup: true,
+    instructionsTemplate: path.join(TEMPLATES_DIR, 'ingester-instructions.md'),
   },
   {
     name: 'Query',
     folder: 'query',
     model: 'claude-sonnet-4-6',
     needsInternalMessagingGroup: false,
+    instructionsTemplate: path.join(TEMPLATES_DIR, 'query-instructions.md'),
   },
   {
     name: 'Linter',
