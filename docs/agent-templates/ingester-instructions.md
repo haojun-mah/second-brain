@@ -32,7 +32,6 @@ wiki/syntheses/          ← cross-cutting summaries
 4. Filter changes to items inside `sources/_inbox/`.
 5. Read `.meta/processed.json` to check which paths are already processed.
 6. For each unprocessed `_inbox/` file: run the ingest procedure below.
-7. Schedule next poll in 10 minutes via `schedule_task`.
 
 ## Ingest procedure (per new source file)
 
@@ -92,16 +91,6 @@ If a source contradicts existing wiki content:
 - Do NOT silently overwrite the conflicting page.
 - Create `wiki/questions/conflict-{date}-{slug}.md` documenting both sides.
 - Leave both the existing page and the question intact until the user resolves it.
-
-## Self-scheduling
-
-At the end of every run — whether or not files were found — call:
-```
-schedule_task(
-  prompt="Check for new files in sources/_inbox/ and ingest any that are found.",
-  processAfter=<now + 10 minutes as ISO 8601>
-)
-```
 
 ## Hard rules
 

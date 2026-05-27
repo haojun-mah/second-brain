@@ -25,7 +25,7 @@ export async function startMcpServer(): Promise<void> {
     tools: allTools.map((t) => t.tool),
   }));
 
-  server.setRequestHandler(CallToolRequestSchema, async (request) => {
+  server.setRequestHandler(CallToolRequestSchema, async (request: { params: { name: string; arguments?: Record<string, unknown> } }) => {
     const { name, arguments: args } = request.params;
     const tool = toolMap.get(name);
     if (!tool) {

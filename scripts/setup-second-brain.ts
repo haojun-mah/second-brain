@@ -23,7 +23,10 @@ import {
   getMessagingGroupByPlatform,
 } from '../src/db/messaging-groups.js';
 import { runMigrations } from '../src/db/migrations/index.js';
+import { openInboundDb } from '../src/db/session-db.js';
 import { initGroupFilesystem } from '../src/group-init.js';
+import { insertTask } from '../src/modules/scheduling/db.js';
+import { inboundDbPath, resolveSession } from '../src/session-manager.js';
 import type { AgentGroup } from '../src/types.js';
 
 function generateId(prefix: string): string {
@@ -80,7 +83,7 @@ const GROUP_SPECS: GroupSpec[] = [
   {
     name: 'Linter',
     folder: 'linter',
-    model: 'claude-opus-4-7',
+    model: 'claude-sonnet-4-6',
     needsInternalMessagingGroup: true,
     instructionsTemplate: path.join(TEMPLATES_DIR, 'linter-instructions.md'),
   },
@@ -122,14 +125,14 @@ function createGroup(spec: GroupSpec, now: string): AgentGroup {
   return ag;
 }
 
-function ensureInternalMessagingGroup(ag: AgentGroup, spec: GroupSpec, now: string): void {
+function ensureInternalMessagingGroup(ag: AgentGroup, spec: GroupSpec, now: string): string {
   const platformId = `internal:${spec.folder}`;
   const existing = getMessagingGroupByPlatform('internal', platformId);
   if (existing) {
     console.log(
       `Skipping internal messaging group for '${spec.folder}' — already exists: ${existing.id}`,
     );
-    return;
+    return existing.id;
   }
 
   const mgId = generateId('mg');
@@ -157,6 +160,42 @@ function ensureInternalMessagingGroup(ag: AgentGroup, spec: GroupSpec, now: stri
     created_at: now,
   });
   console.log(`Wired ${mgId} -> ${ag.id}`);
+  return mgId;
+}
+
+function bootstrapRecurringTask(
+  ag: AgentGroup,
+  mgId: string,
+  cron: string,
+  prompt: string,
+  label: string,
+): void {
+  const existing = resolveSession(ag.id, mgId, null, 'shared');
+  const { session, created } = existing;
+  const dbPath = inboundDbPath(ag.id, session.id);
+  const db = openInboundDb(dbPath);
+  try {
+    // Skip if a pending recurring task already exists for this session.
+    const already = db
+      .prepare("SELECT COUNT(*) as n FROM messages_in WHERE kind='task' AND status='pending' AND recurrence IS NOT NULL")
+      .get() as { n: number };
+    if (!created && already.n > 0) {
+      console.log(`${label}: recurring task already present — skipping.`);
+      return;
+    }
+    insertTask(db, {
+      id: generateId('task'),
+      processAfter: new Date().toISOString(),
+      recurrence: cron,
+      platformId: null,
+      channelType: null,
+      threadId: null,
+      content: JSON.stringify({ prompt }),
+    });
+    console.log(`${label}: recurring task created (${cron}, fires immediately).`);
+  } finally {
+    db.close();
+  }
 }
 
 async function main(): Promise<void> {
@@ -169,7 +208,21 @@ async function main(): Promise<void> {
   for (const spec of GROUP_SPECS) {
     const ag = createGroup(spec, now);
     if (spec.needsInternalMessagingGroup) {
-      ensureInternalMessagingGroup(ag, spec, now);
+      const mgId = ensureInternalMessagingGroup(ag, spec, now);
+      if (spec.folder === 'ingester') {
+        bootstrapRecurringTask(
+          ag, mgId, '*/10 * * * *',
+          'Check for new files in sources/_inbox/ and ingest any that are found.',
+          'Ingester',
+        );
+      }
+      if (spec.folder === 'linter') {
+        bootstrapRecurringTask(
+          ag, mgId, '0 3 * * 0',
+          'Run a full lint of the wiki vault. Check for broken wikilinks, orphan pages, contradictions, and stale content. Auto-fix what is unambiguous; file anything uncertain in wiki/questions/.',
+          'Linter',
+        );
+      }
     }
     agentGroups.push({ spec, ag });
   }

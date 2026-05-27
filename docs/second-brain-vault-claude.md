@@ -156,10 +156,11 @@ Three agents operate on this vault. Each has a single responsibility.
 
 ### Query
 
-- Answers natural-language questions from the user via Telegram.
+- Answers natural-language questions from the user via Telegram (Q&A mode).
+- Also accepts captures: voice notes, raw thoughts, URLs — writes them to `sources/_inbox/` for the ingester to process (Capture mode).
 - Reads `wiki/` to find relevant pages, follows `[[wikilinks]]`, and traces back to `sources/` for full context when needed.
 - Always cites sources in its replies: page names as `[[wikilinks]]` and source files as `(source: path)`.
-- Never writes to the vault. Read-only.
+- Read-only with respect to `wiki/`. The only write action is dropping files into `sources/_inbox/` during captures.
 
 ### Linter
 

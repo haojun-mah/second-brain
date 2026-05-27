@@ -20,6 +20,9 @@ Run each step in order. Do not skip steps even if an earlier step found no issue
 
 2. **Run all lint checks** (see below). For each check, collect a list of findings before
    deciding what to fix. Do not interleave fixing and checking — finish all checks first.
+   During Check 3, build a tag→pages index from all frontmatter you read (map each tag to
+   the list of pages that carry it). Retain this index in memory — it is reused by the
+   auto-fixes for Checks 1 and 5.
 
 3. **Apply safe auto-fixes** (see Auto-Fix Policy). Make one tool call per file changed.
    After each write, verify the result with `mcp__onedrive__read_note`.
@@ -42,9 +45,31 @@ A page is orphaned if it does not appear in `wiki/index.md` as a `[[wikilink]]`.
 - Fetch `wiki/index.md` and extract all `[[Page Name]]` patterns.
 - Compare against the full page list from step 1 (excluding `index.md` and `log.md`).
 - Any page not reachable from `index.md` is an orphan.
-- **Auto-fix:** Add a one-line entry to `wiki/index.md` for each orphan, under a
-  `## Uncategorized` section at the bottom if no better section is obvious. Log each
-  addition. Do not attempt to guess the right section — conservative placement is correct.
+- **Auto-fix (two steps, always do both):**
+
+**Step A — Cross-link into related pages:**
+1. Read the orphan page body. Extract 2–3 key concepts from the content.
+2. Run `mcp__onedrive__search_vault(concept)` for each extracted term (max 3 calls). Union
+   all results, skip `index.md` and `log.md`, deduplicate by path.
+3. Also check the tag index from Check 3: any page sharing ≥1 tag with the orphan is a
+   candidate.
+4. Rank candidates: pages appearing in both signals (body-search + tag overlap) are high
+   confidence; either signal alone is lower. Take top 3 by confidence.
+5. For each candidate:
+   - Read the page with `mcp__onedrive__read_note`.
+   - If it does not already contain `[[Orphan Title]]`:
+     - If a `## See Also` section exists, append `- [[Orphan Title]]` to it.
+     - Otherwise append a new `## See Also` section at the end of the body with
+       `- [[Orphan Title]]`.
+     - Update `updated:` in the frontmatter to today's date.
+     - Write back with `mcp__onedrive__write_note` using the etag guard.
+     - Log: `- Cross-linked [[Orphan Title]] into wiki/.../related.md (See Also)`
+6. If no candidates found via either signal, skip Step A.
+
+**Step B — Add to index (always runs):**
+- Add a one-line entry to `wiki/index.md` for each orphan.
+- If Step A found related pages in a recognizable section (e.g., `wiki/concepts/`), add the
+  orphan to that section. Otherwise add under `## Uncategorized`.
 
 ### 2. Broken Wikilinks
 
@@ -88,8 +113,22 @@ date and it does not already have `stale: true` in its frontmatter.
 
 - Compute today's date from context (available in the system prompt as `currentDate`).
 - Flag pages where `updated` < (today - 180 days) and `stale` is not `true`.
-- **Do not auto-fix.** Staleness is a signal for human review, not an automatic label.
-- File a question listing all candidates with their `updated` dates.
+- **Auto-fix (light, when a newer page is found):**
+  1. Read the stale page body. Extract 2–3 key concepts. Run `mcp__onedrive__search_vault`
+     on each; also check tag overlap from the Check 3 tag index.
+  2. From the candidates, find pages with a more recent `updated` date than the stale page.
+  3. If a newer page is found:
+     - Read the stale page.
+     - Prepend this callout immediately after the closing `---` of the frontmatter:
+       ```
+       > **Note:** See also [[Newer Page Name]] for more recent coverage.
+       ```
+     - Update `updated:` in the stale page's frontmatter to today's date.
+     - Write back with the etag guard.
+     - Log: `- Added "See also" note to wiki/.../stale-page.md → [[Newer Page Name]]`
+  4. If no newer page found via either signal, no auto-fix for this page.
+- **Always file a question** listing all stale candidates with their `updated` dates,
+  regardless of whether a see-also callout was added.
 
 ### 6. Overlong Pages
 
@@ -114,6 +153,33 @@ definitions of the same term).
 - If you find no candidates, record `contradictions_checked: true` in `last_lint.json`
   with a note that no candidates were found. Do not manufacture findings.
 
+### 9. Under-Connected Pages
+
+Every wiki page (except `index.md`, `log.md`, and pages under `wiki/questions/`) should
+link to at least one related page. This check finds pages that are missing cross-links to
+related content and adds them automatically.
+
+- For each wiki page not already handled as an orphan in Check 1:
+  1. Read the page body. Extract 2–3 key concepts.
+  2. Run `mcp__onedrive__search_vault(concept)` for each term (max 3 calls). Union results,
+     skip `index.md`, `log.md`, and `wiki/questions/**`. Deduplicate by path.
+  3. Also check the tag index from Check 3 for pages sharing ≥1 tag.
+  4. From the combined candidates, filter out pages already linked in the current page's
+     body (i.e. `[[Candidate Title]]` already appears anywhere in the body — not just See
+     Also). Also skip self-references.
+  5. Rank by confidence (body-search + tag overlap = high; either alone = lower). Take top 3
+     candidates that are not already linked.
+- **Auto-fix:** For each candidate:
+  - Read the candidate page.
+  - If it does not already contain `[[Current Page Title]]`:
+    - If a `## See Also` section exists, append `- [[Current Page Title]]` to it.
+    - Otherwise append a new `## See Also` section at the end of the body.
+    - Update `updated:` in the frontmatter to today's date.
+    - Write back with the etag guard.
+    - Log: `- Cross-linked [[Current Page Title]] into wiki/.../candidate.md (See Also)`
+- If no candidates are found for a page, skip it silently — do not file a question.
+- Pages in `wiki/questions/` are lint artifacts; skip them for both source and target.
+
 ### 8. Potential Duplicates
 
 Two pages are potential duplicates if they have very similar titles or if their body
@@ -137,6 +203,9 @@ content is substantially the same concept described twice.
 | Add orphan page to `wiki/index.md` | Page exists but is missing from index |
 | Convert `tags` from bare string to list | e.g., `tags: concept` → `tags: ["concept"]` |
 | Add `tags: []` | `tags` field is absent entirely |
+| Append `[[wikilink]]` to related page's See Also section | Orphan found + body-search or tag overlap returns ≥1 candidate |
+| Prepend "See also" callout to stale page body | Stale page found + body-search or tag overlap returns a newer page |
+| Append `[[wikilink]]` to related page's See Also section | Any page + body-search or tag overlap returns a related page not already linked |
 
 For every auto-fix:
 - Read the file first, modify minimally, write back.
@@ -214,6 +283,7 @@ Append to `wiki/log.md` using `mcp__onedrive__append_note`. Do not rewrite the f
 - Missing/malformed frontmatter: {N} found, {M} auto-fixed
 - Uncited content: {N} found
 - Stale pages: {N} candidates
+- Cross-links added: {N} (orphan cross-links: {A}, stale see-also callouts: {B}, general cross-links: {C})
 - Overlong pages: {N} found
 - Contradictions: {N} candidates (or "none found")
 - Duplicates: {N} candidates (or "none found")
@@ -240,6 +310,7 @@ Write (overwrite) `.meta/last_lint.json` after the log entry is appended.
     "missing_frontmatter": { "found": 0, "auto_fixed": 0 },
     "uncited_content": { "found": 0 },
     "stale_pages": { "candidates": 0 },
+    "cross_links_added": { "orphan_cross_links": 0, "stale_see_also": 0, "general_cross_links": 0 },
     "overlong_pages": { "found": 0 },
     "contradictions": { "candidates": 0, "checked": true },
     "duplicates": { "candidates": 0, "checked": true }

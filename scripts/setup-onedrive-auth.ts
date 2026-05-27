@@ -19,6 +19,9 @@
  *   pnpm exec tsx scripts/setup-onedrive-auth.ts
  */
 import { spawnSync } from 'child_process';
+import fs from 'fs';
+import path from 'path';
+import Database from 'better-sqlite3';
 
 const clientId = process.env.MS_CLIENT_ID;
 const tenantId = process.env.MS_TENANT_ID;
@@ -110,29 +113,122 @@ async function pollForToken(
   }
 }
 
-function storeInOneCli(refreshToken: string): void {
+function writeToEnvFile(filePath: string, key: string, value: string): void {
+  const content = fs.existsSync(filePath) ? fs.readFileSync(filePath, 'utf-8') : '';
+  const re = new RegExp(`^${key}=.*$`, 'm');
+  const updated = re.test(content)
+    ? content.replace(re, `${key}=${value}`)
+    : content.trimEnd() + (content ? '\n' : '') + `${key}=${value}\n`;
+  fs.writeFileSync(filePath, updated);
+}
+
+// Inject MS credentials into the DB mcp_servers config for all second-brain
+// agent groups, then regenerate their container.json files. This is the only
+// place secrets should enter container config — never hand-edited.
+function updateAgentGroupCredentials(refreshToken: string): void {
+  const root = path.resolve(import.meta.dirname, '..');
+  const dbPath = path.join(root, 'data', 'v2.db');
+
+  if (!fs.existsSync(dbPath)) {
+    console.log('  DB not found — skipping agent group credential update (run after setup:auto)');
+    return;
+  }
+
+  const db = new Database(dbPath);
+
+  const SECOND_BRAIN_GROUPS = ['ingester', 'query', 'linter'];
+
+  for (const folder of SECOND_BRAIN_GROUPS) {
+    const group = db.prepare('SELECT id, name FROM agent_groups WHERE folder = ?').get(folder) as
+      | { id: string; name: string }
+      | undefined;
+    if (!group) {
+      console.log(`  ${folder}: group not found in DB — skipping`);
+      continue;
+    }
+
+    const row = db.prepare('SELECT * FROM container_configs WHERE agent_group_id = ?').get(group.id) as
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      Record<string, any> | undefined;
+    if (!row) {
+      console.log(`  ${folder}: no container_config row — skipping`);
+      continue;
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const mcpServers = JSON.parse(row.mcp_servers as string) as Record<string, any>;
+    if (!mcpServers.onedrive) {
+      console.log(`  ${folder}: no onedrive MCP server in config — skipping`);
+      continue;
+    }
+
+    // Replace env wholesale — no stale keys left behind.
+    mcpServers.onedrive.env = {
+      MS_CLIENT_ID: clientId,
+      MS_TENANT_ID: tenantId,
+      MS_REFRESH_TOKEN: refreshToken,
+      // Bypass the OneCLI proxy for Microsoft auth/data endpoints.
+      NO_PROXY: 'login.microsoftonline.com,graph.microsoft.com',
+    };
+
+    db.prepare('UPDATE container_configs SET mcp_servers = ?, updated_at = ? WHERE agent_group_id = ?').run(
+      JSON.stringify(mcpServers),
+      new Date().toISOString(),
+      group.id,
+    );
+
+    // Regenerate container.json from updated DB data so the next spawn picks
+    // up the change without requiring a host restart.
+    const containerConfig = {
+      mcpServers,
+      packages: {
+        apt: JSON.parse(row.packages_apt as string ?? '[]') as string[],
+        npm: JSON.parse(row.packages_npm as string ?? '[]') as string[],
+      },
+      ...(row.image_tag ? { imageTag: row.image_tag as string } : {}),
+      additionalMounts: JSON.parse(row.additional_mounts as string ?? '[]'),
+      skills: JSON.parse(row.skills as string ?? '"all"'),
+      ...(row.provider ? { provider: row.provider as string } : {}),
+      groupName: group.name,
+      assistantName: (row.assistant_name as string | null) ?? group.name,
+      agentGroupId: group.id,
+      ...(row.max_messages_per_prompt != null ? { maxMessagesPerPrompt: row.max_messages_per_prompt as number } : {}),
+      ...(row.model ? { model: row.model as string } : {}),
+      ...(row.effort ? { effort: row.effort as string } : {}),
+    };
+
+    const containerJsonPath = path.join(root, 'groups', folder, 'container.json');
+    fs.mkdirSync(path.dirname(containerJsonPath), { recursive: true });
+    fs.writeFileSync(containerJsonPath, JSON.stringify(containerConfig, null, 2) + '\n');
+
+    console.log(`  ${folder}: DB + container.json updated`);
+  }
+
+  db.close();
+}
+
+function persistRefreshToken(refreshToken: string): void {
+  const root = path.resolve(import.meta.dirname, '..');
+  const envFile = path.join(root, '.env');
+  const containerEnvFile = path.join(root, 'data', 'env', 'env');
+
+  writeToEnvFile(envFile, 'MS_REFRESH_TOKEN', refreshToken);
+  console.log(`  Written to .env`);
+
+  fs.mkdirSync(path.dirname(containerEnvFile), { recursive: true });
+  writeToEnvFile(containerEnvFile, 'MS_REFRESH_TOKEN', refreshToken);
+  console.log(`  Written to data/env/env`);
+
+  updateAgentGroupCredentials(refreshToken);
+
+  // Also store in OneCLI vault as a secure backup reference.
   const result = spawnSync(
     'onecli',
-    [
-      'secrets',
-      'create',
-      '--name',
-      'ms-onedrive-refresh-token',
-      '--value',
-      refreshToken,
-      '--host',
-      'login.microsoftonline.com',
-    ],
-    { stdio: 'inherit' },
+    ['secrets', 'create', '--name', 'ms-onedrive-refresh-token', '--value', refreshToken, '--host', 'login.microsoftonline.com'],
+    { stdio: 'pipe' },
   );
-
-  if (result.error) {
-    console.error(`Failed to run onecli: ${result.error.message}`);
-    process.exit(1);
-  }
-  if (result.status !== 0) {
-    console.error(`onecli exited with status ${result.status}`);
-    process.exit(1);
+  if (result.status === 0) {
+    console.log(`  Stored in OneCLI vault`);
   }
 }
 
@@ -148,13 +244,11 @@ async function main(): Promise<void> {
   const refreshToken = await pollForToken(dc.device_code, dc.interval);
 
   console.log();
-  console.log('Authorization complete. Storing refresh token in OneCLI vault...');
-  storeInOneCli(refreshToken);
+  console.log('Authorization complete. Persisting refresh token...');
+  persistRefreshToken(refreshToken);
 
   console.log();
-  console.log('Refresh token obtained. Stored in OneCLI vault.');
-  console.log('You can also add it manually to .env:');
-  console.log(`MS_REFRESH_TOKEN=${refreshToken}`);
+  console.log('Done. MS_REFRESH_TOKEN is now available to the agent containers.');
 }
 
 main().catch((err) => {
