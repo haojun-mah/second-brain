@@ -187,6 +187,13 @@ step "Installing dependencies"
 pnpm install --frozen-lockfile
 ok "Dependencies installed"
 
+# ── Build TypeScript (host) ───────────────────────────────────────────────────
+step "Building host TypeScript"
+if ! pnpm run build 2>&1; then
+  die "TypeScript build failed. See output above for the compiler error."
+fi
+ok "Host TypeScript built"
+
 # ── Build container image ─────────────────────────────────────────────────────
 if [ "$SKIP_BUILD" != "1" ]; then
   step "Building agent container image (nanoclaw-agent:latest)"

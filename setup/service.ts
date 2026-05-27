@@ -31,15 +31,22 @@ export async function run(_args: string[]): Promise<void> {
 
   log.info('Setting up service', { platform, nodePath, projectRoot });
 
-  // Build first
+  // Build first — use tsc directly to avoid nested pnpm invocation issues.
   log.info('Building TypeScript');
+  const tscBin = path.join(projectRoot, 'node_modules', '.bin', 'tsc');
+  const buildCmd = fs.existsSync(tscBin) ? tscBin : 'pnpm run build';
   try {
-    execSync('pnpm run build', {
+    execSync(buildCmd, {
       cwd: projectRoot,
       stdio: ['ignore', 'pipe', 'pipe'],
     });
     log.info('Build succeeded');
-  } catch {
+  } catch (buildErr) {
+    const err = buildErr as NodeJS.ErrnoException & { stdout?: Buffer; stderr?: Buffer };
+    const stdout = err.stdout?.toString('utf-8').trim() ?? '';
+    const stderr = err.stderr?.toString('utf-8').trim() ?? '';
+    if (stdout) log.error('Build stdout: ' + stdout);
+    if (stderr) log.error('Build stderr: ' + stderr);
     log.error('Build failed');
     emitStatus('SETUP_SERVICE', {
       SERVICE_TYPE: 'unknown',
