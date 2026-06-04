@@ -3,7 +3,7 @@ import { getPendingMessages, markProcessing, markCompleted, type MessageInRow } 
 import { writeMessageOut } from './db/messages-out.js';
 import { getInboundDb, touchHeartbeat, clearStaleProcessingAcks } from './db/connection.js';
 import { clearContinuation, migrateLegacyContinuation, setContinuation } from './db/session-state.js';
-import { clearCurrentInReplyTo, setCurrentInReplyTo } from './current-batch.js';
+import { clearCurrentInReplyTo, setCurrentInReplyTo, clearAgentMessageSent, markAgentMessageSent, wasAgentMessageSentThisTurn } from './current-batch.js';
 import {
   formatMessages,
   extractRouting,
@@ -210,6 +210,7 @@ export async function runPollLoop(config: PollLoopConfig): Promise<void> {
       });
     } finally {
       clearCurrentInReplyTo();
+      clearAgentMessageSent();
     }
 
     // Ensure completed even if processQuery ended without a result event
@@ -431,6 +432,19 @@ function handleEvent(event: ProviderEvent, _routing: RoutingContext): void {
 function dispatchResultText(text: string, routing: RoutingContext): { sent: number; hasUnwrapped: boolean } {
   const MESSAGE_RE = /<message\s+to="([^"]+)"\s*>([\s\S]*?)<\/message>/g;
 
+  // Pre-scan: check if any block targets an agent destination so we can
+  // suppress channel messages regardless of block order in the output.
+  const prescanRe = /<message\s+to="([^"]+)"\s*>[\s\S]*?<\/message>/g;
+  let prescanMatch: RegExpExecArray | null;
+  let hasAgentBlock = false;
+  while ((prescanMatch = prescanRe.exec(text)) !== null) {
+    const dest = findByName(prescanMatch[1]);
+    if (dest?.type === 'agent') {
+      hasAgentBlock = true;
+      break;
+    }
+  }
+
   let match: RegExpExecArray | null;
   let sent = 0;
   let lastIndex = 0;
@@ -450,6 +464,15 @@ function dispatchResultText(text: string, routing: RoutingContext): { sent: numb
       scratchpadParts.push(`[dropped: unknown destination "${toName}"] ${body}`);
       continue;
     }
+
+    if (dest.type === 'agent') {
+      markAgentMessageSent();
+    } else if (hasAgentBlock || wasAgentMessageSentThisTurn()) {
+      log(`dispatchResultText: suppressed channel message to "${toName}" — agent delegation already sent this turn`);
+      scratchpadParts.push(`[suppressed split-response to "${toName}"] ${body}`);
+      continue;
+    }
+
     sendToDestination(dest, body, routing);
     sent++;
   }

@@ -9,7 +9,7 @@
 import fs from 'fs';
 import path from 'path';
 
-import { getCurrentInReplyTo } from '../current-batch.js';
+import { getCurrentInReplyTo, markAgentMessageSent, wasAgentMessageSentThisTurn } from '../current-batch.js';
 import { findByName, getAllDestinations } from '../destinations.js';
 import { getMessageIdBySeq, getRoutingBySeq, writeMessageOut } from '../db/messages-out.js';
 import { getSessionRouting } from '../db/session-routing.js';
@@ -114,6 +114,15 @@ export const sendMessage: McpToolDefinition = {
 
     const routing = resolveRouting(args.to as string | undefined);
     if ('error' in routing) return err(routing.error);
+
+    if (routing.channel_type === 'agent') {
+      markAgentMessageSent();
+    } else if (wasAgentMessageSentThisTurn()) {
+      // Suppress: an agent delegation already went out this turn.
+      // Sending to the user channel now would produce a split response.
+      log(`send_message: suppressed channel message to ${routing.resolvedName} — agent delegation already sent this turn`);
+      return ok(`(suppressed — delegate already sent this turn; the specialist will reply directly)`);
+    }
 
     const id = generateId();
     const seq = writeMessageOut({

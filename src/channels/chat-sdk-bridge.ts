@@ -127,6 +127,21 @@ export function createChatSdkBridge(config: ChatSdkBridgeConfig): ChannelAdapter
   let setupConfig: ChannelSetup;
   let gatewayAbort: AbortController | null = null;
 
+  // Dedup guard: the Telegram polling loop can deliver the same update twice
+  // when the network recovers after failures (two concurrent getUpdates calls
+  // both return the same unacknowledged batch). Track message IDs for 10s.
+  const recentMessageIds = new Map<string, number>();
+  const DEDUP_TTL_MS = 10_000;
+  function isDuplicate(id: string): boolean {
+    const now = Date.now();
+    for (const [k, ts] of recentMessageIds) {
+      if (now - ts > DEDUP_TTL_MS) recentMessageIds.delete(k);
+    }
+    if (recentMessageIds.has(id)) return true;
+    recentMessageIds.set(id, now);
+    return false;
+  }
+
   async function messageToInbound(
     message: ChatMessage,
     isMention: boolean,
@@ -221,6 +236,7 @@ export function createChatSdkBridge(config: ChatSdkBridgeConfig): ChannelAdapter
       // engaged. Carry the SDK's `message.isMention` through so mention-mode
       // wirings still fire on in-thread mentions.
       chat.onSubscribedMessage(async (thread, message) => {
+        if (isDuplicate(message.id)) return;
         const channelId = adapter.channelIdFromThreadId(thread.id);
         await setupConfig.onInbound(
           channelId,
@@ -231,6 +247,7 @@ export function createChatSdkBridge(config: ChatSdkBridgeConfig): ChannelAdapter
 
       // @mention in an unsubscribed thread — SDK-confirmed bot mention.
       chat.onNewMention(async (thread, message) => {
+        if (isDuplicate(message.id)) return;
         const channelId = adapter.channelIdFromThreadId(thread.id);
         await setupConfig.onInbound(channelId, thread.id, await messageToInbound(message, true, true));
       });
@@ -240,6 +257,7 @@ export function createChatSdkBridge(config: ChatSdkBridgeConfig): ChannelAdapter
       // inside a DM). Router collapses DM sub-threads to one session via
       // is_group=0 short-circuit.
       chat.onDirectMessage(async (thread, message) => {
+        if (isDuplicate(message.id)) return;
         const channelId = adapter.channelIdFromThreadId(thread.id);
         log.info('Inbound DM received', {
           adapter: adapter.name,
@@ -261,6 +279,7 @@ export function createChatSdkBridge(config: ChatSdkBridgeConfig): ChannelAdapter
       // so forwarding every one is cheap enough to not need a bridge-side
       // flood gate.
       chat.onNewMessage(/[\s\S]*/, async (thread, message) => {
+        if (isDuplicate(message.id)) return;
         const channelId = adapter.channelIdFromThreadId(thread.id);
         await setupConfig.onInbound(channelId, thread.id, await messageToInbound(message, false, true));
       });

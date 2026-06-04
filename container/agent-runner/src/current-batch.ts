@@ -27,3 +27,19 @@ export function getCurrentInReplyTo(): string | null {
   return currentInReplyTo;
 }
 
+// Set when any agent-type (inter-agent) message is sent during this turn.
+// Used to suppress same-turn channel messages that would produce a split response.
+let agentMessageSentThisTurn = false;
+
+export function markAgentMessageSent(): void {
+  agentMessageSentThisTurn = true;
+}
+
+export function clearAgentMessageSent(): void {
+  agentMessageSentThisTurn = false;
+}
+
+export function wasAgentMessageSentThisTurn(): boolean {
+  return agentMessageSentThisTurn;
+}
+
