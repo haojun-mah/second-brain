@@ -127,11 +127,17 @@ export function createChatSdkBridge(config: ChatSdkBridgeConfig): ChannelAdapter
   let setupConfig: ChannelSetup;
   let gatewayAbort: AbortController | null = null;
 
-  // Dedup guard: the Telegram polling loop can deliver the same update twice
-  // when the network recovers after failures (two concurrent getUpdates calls
-  // both return the same unacknowledged batch). Track message IDs for 10s.
+  // Dedup guard: long-poll adapters (Telegram getUpdates) can redeliver the
+  // same update when a poll fails before its offset is acknowledged — the next
+  // getUpdates returns the same un-acked batch. On a flaky link this repeats and
+  // surfaces as duplicate bot replies to one user message. The redelivery can
+  // arrive a whole poll cycle later (timeout=30s), so the window must exceed
+  // that; 10s was too short and let cross-cycle redeliveries through. Telegram
+  // message IDs are unique per chat, so a longer window never drops a distinct
+  // message. Also covers overlapping SDK dispatch paths (onDirectMessage +
+  // catch-all onNewMessage) firing for the same id.
   const recentMessageIds = new Map<string, number>();
-  const DEDUP_TTL_MS = 10_000;
+  const DEDUP_TTL_MS = 300_000;
   function isDuplicate(id: string): boolean {
     const now = Date.now();
     for (const [k, ts] of recentMessageIds) {
