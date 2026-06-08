@@ -17,6 +17,36 @@ import type { ChannelAdapter, ChannelSetup, InboundMessage } from './adapter.js'
 import { tryConsume } from './telegram-pairing.js';
 
 /**
+ * Drain any stale Telegram getUpdates long-poll before starting the normal
+ * polling loop. Telegram allows only one active getUpdates connection per bot
+ * token; when nanoclaw restarts, the previous process's long-poll (held open
+ * for up to its own ~30s timeout) can still be registered server-side for a
+ * short grace period afterward, so the first new connection attempts come
+ * back with 409 Conflict ("terminated by other getUpdates request").
+ *
+ * Fix: poll getUpdates(timeout=0) in a tight retry loop. Each short-lived
+ * attempt nudges Telegram to tear down the stale connection; once it's
+ * gone, a call succeeds and we hand off to the normal long-polling loop —
+ * instead of leaving it to grind through minutes of noisy 409s on the
+ * bridge's own (much slower) reconnect backoff.
+ */
+async function drainPollingConflict(token: string, maxAttempts = 20): Promise<void> {
+  const url = `https://api.telegram.org/bot${token}/getUpdates?timeout=0&limit=1`;
+  for (let i = 0; i < maxAttempts; i++) {
+    try {
+      const res = await fetch(url, { signal: AbortSignal.timeout(10000) });
+      const data = (await res.json()) as { ok: boolean; error_code?: number };
+      if (data.ok) return;
+      if (data.error_code !== 409) return; // unexpected error — don't loop
+      log.debug('Telegram polling slot busy, retrying drain', { attempt: i + 1 });
+    } catch {
+      return; // network error — let the normal setup handle it
+    }
+    await new Promise((r) => setTimeout(r, 1500));
+  }
+}
+
+/**
  * Retry a one-shot operation that can fail on transient network errors at
  * cold-start (DNS hiccups, brief upstream outages). Exponential backoff capped
  * at 5 attempts — if the network is truly down we surface it instead of
@@ -237,6 +267,9 @@ registerChannelAdapter('telegram', {
           ...hostConfig,
           onInbound: createPairingInterceptor(botUsernamePromise, hostConfig.onInbound, token),
         };
+        // Clear any stale proxy connection before starting the polling loop.
+        // See drainPollingConflict() for the full explanation.
+        await drainPollingConflict(token);
         return withRetry(() => bridge.setup(intercepted), 'bridge.setup');
       },
     };

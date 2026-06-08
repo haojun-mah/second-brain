@@ -4,6 +4,8 @@
  * Thin orchestrator: init DB, run migrations, start channel adapters,
  * start delivery polls, start sweep, handle shutdown.
  */
+import dns from 'dns';
+import net from 'net';
 import path from 'path';
 
 import { backfillContainerConfigs } from './backfill-container-configs.js';
@@ -65,6 +67,18 @@ import { initChannelAdapters, teardownChannelAdapters, getChannelAdapter } from 
 
 async function main(): Promise<void> {
   log.info('NanoClaw starting');
+
+  // Some hosts (VPS/VMs with broken IPv6 egress, e.g. v6 addresses assigned
+  // but unroutable) resolve dual-stack hostnames like api.telegram.org to
+  // both an A and AAAA record. Node's default "Happy Eyeballs" connection
+  // racing (autoSelectFamily) then has roughly even odds of picking the
+  // dead IPv6 address, failing the connection outright instead of falling
+  // back to IPv4 — undici's fetch surfaces this as an opaque "fetch failed".
+  // Forcing IPv4-first resolution and disabling the race makes every
+  // connection attempt go straight to the address family that actually
+  // works, on this host and on healthy dual-stack hosts alike.
+  dns.setDefaultResultOrder('ipv4first');
+  net.setDefaultAutoSelectFamily(false);
 
   // 0. Circuit breaker — backoff on rapid restarts
   await enforceStartupBackoff();
