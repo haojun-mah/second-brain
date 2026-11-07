@@ -12,7 +12,7 @@ There are seven steps. Do them in order — each one depends on the last.
 | [3. Install the MCP server](#3-install-the-mcp-server) | A working bridge to your vault | 5 min |
 | [4. Wire it into Hermes](#4-wire-it-into-hermes) | Agent can call vault tools | 5 min |
 | [5. Install the skills](#5-install-the-skills) | The four agents | 2 min |
-| [6. Create the vault](#6-create-the-vault) | Folder structure + `CLAUDE.md` | 5 min |
+| [6. Create the vault](#6-create-the-vault) | Folder structure + `AGENTS.md` | 5 min |
 | [7. Schedule the agents](#7-schedule-the-agents) | Ingester + linter on cron | 5 min |
 
 ---
@@ -374,7 +374,7 @@ API, including empty directories (Graph can't create empty folders, so it writes
 
 ```
 OneDrive/Obsidian/
-├── CLAUDE.md
+├── AGENTS.md
 ├── sources/
 │   ├── _inbox/          ← the drop zone
 │   ├── written/         ← paper trail of everything you typed
@@ -394,7 +394,7 @@ OneDrive/Obsidian/
 ./scripts/healthcheck.sh
 ```
 
-It checks that every required folder exists, that `CLAUDE.md` is present, and that the
+It checks that every required folder exists, that `AGENTS.md` is present, and that the
 wiki index and log have the expected shape.
 
 > **Important:** the template folders ship with `.gitkeep` files so git can track them.
@@ -414,7 +414,7 @@ hermes cron add \
   --name "second-brain-ingest" \
   --schedule "*/30 * * * *" \
   --skill second-brain-ingester \
-  --prompt "Run the ingest cycle. Follow the polling flow in the skill: check the inbox listing and the delta feed, short-circuit to IDLE if both are empty, otherwise read CLAUDE.md and process every unprocessed file through the full procedure. End with a one-line summary of what was ingested, or the word IDLE."
+  --prompt "Run the ingest cycle. Follow the polling flow in the skill: check the inbox listing and the delta feed, short-circuit to IDLE if both are empty, otherwise read AGENTS.md and process every unprocessed file through the full procedure. End with a one-line summary of what was ingested, or the word IDLE."
 ```
 
 ### Linter — weekly, Sunday 03:00
@@ -424,7 +424,7 @@ hermes cron add \
   --name "second-brain-lint" \
   --schedule "0 3 * * 0" \
   --skill second-brain-linter \
-  --prompt "Run the weekly lint. Read CLAUDE.md first, then .meta/last_lint.json and the most recent file in wiki/questions/ for the carry-forward baseline. Run all ten checks, apply only the unambiguous auto-fixes, file questions for everything else, append the log entry, and write .meta/last_lint.json."
+  --prompt "Run the weekly lint. Read AGENTS.md first, then .meta/last_lint.json and the most recent file in wiki/questions/ for the carry-forward baseline. Run all ten checks, apply only the unambiguous auto-fixes, file questions for everything else, append the log entry, and write .meta/last_lint.json."
 ```
 
 Adjust `--schedule` if you want a different cadence. Cron uses the host's local timezone.

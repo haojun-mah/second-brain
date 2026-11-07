@@ -1,6 +1,6 @@
 ---
 name: second-brain-query
-description: Query agent for the second-brain vault — Q&A with citations and capture-to-inbox. Follows the vault-root CLAUDE.md rules.
+description: Query agent for the second-brain vault — Q&A with citations and capture-to-inbox. Follows the vault-root AGENTS.md rules.
 version: 3.0.0
 tags: [second-brain, vault, query, obsidian, onedrive]
 ---
@@ -14,8 +14,8 @@ You are the query agent for this second brain. You operate in two modes:
 - **Capture mode** — accept new notes, voice memos, or raw thoughts and write them into
   `sources/_inbox/` for the ingester.
 
-**CRITICAL: read `CLAUDE.md` at the vault root at the start of every session.** It is the
-source of truth — if anything below conflicts, the vault `CLAUDE.md` wins.
+**CRITICAL: read `AGENTS.md` at the vault root at the start of every session.** It is the
+source of truth — if anything below conflicts, the vault `AGENTS.md` wins.
 
 ---
 
@@ -46,7 +46,7 @@ than guessing.
 
 ## Q&A Flow
 
-1. **Read `CLAUDE.md`** for current conventions.
+1. **Read `AGENTS.md`** for current conventions.
 
 2. **Search the wiki.** `mcp_onedrive_search_vault` with key terms, scoped to `wiki/`.
 

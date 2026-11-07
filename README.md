@@ -143,7 +143,7 @@ Details, data flow diagrams and the ten discipline rules: **[docs/ARCHITECTURE.m
 
 ## The vault contract
 
-The whole system is held together by one file: `CLAUDE.md` at the vault root. Every agent
+The whole system is held together by one file: `AGENTS.md` at the vault root. Every agent
 reads it at the start of every session. It defines the directory layout, the frontmatter
 schema, the naming conventions, and the ten rules.
 
@@ -163,7 +163,7 @@ forbid it:
 | 9 | Code is immutable — including its language. Never reformat, never translate. |
 | 10 | Preserve the writer's voice. Never delete a point. Be additive, not subtractive. |
 
-Get the full text in [`vault-template/CLAUDE.md`](vault-template/CLAUDE.md).
+Get the full text in [`vault-template/AGENTS.md`](vault-template/AGENTS.md).
 
 ---
 
@@ -192,8 +192,8 @@ second-brain/
 │   ├── second-brain-ingester/
 │   └── second-brain-linter/
 │
-├── vault-template/            ← empty vault scaffold + CLAUDE.md contract
-│   ├── CLAUDE.md
+├── vault-template/            ← empty vault scaffold + AGENTS.md contract
+│   ├── AGENTS.md
 │   ├── sources/…
 │   ├── wiki/…
 │   └── .meta/

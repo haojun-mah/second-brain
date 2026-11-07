@@ -1,10 +1,16 @@
 # Second Brain Vault
 
-This file is read first by every agent (ingester, query, linter) at the start of every
-session. It defines vault layout, naming conventions, frontmatter schema, and the discipline
-rules every agent must follow without exception.
+This file is read first by every agent at the start of every session — regardless of
+which agent framework you run (Hermes, Claude Code, Codex, Cursor, OpenCode, or your
+own). It defines vault layout, naming conventions, frontmatter schema, and the
+discipline rules every agent must follow without exception.
 
-If anything in a skill conflicts with this file, **this file wins**.
+**Why `AGENTS.md`:** it is the cross-tool convention. Hermes, Claude Code, Codex,
+Cursor, and OpenCode all read it natively, so the same file drives every agent you
+point at this vault. If your tool only looks for `CLAUDE.md`, symlink it:
+`ln -s AGENTS.md CLAUDE.md`.
+
+If anything in an agent's own instructions conflicts with this file, **this file wins**.
 
 ---
 
@@ -12,7 +18,7 @@ If anything in a skill conflicts with this file, **this file wins**.
 
 ```
 <YourDrive>/Obsidian/
-├── CLAUDE.md                    ← this file (read first, every session)
+├── AGENTS.md                    ← this file (read first, every session)
 ├── sources/
 │   ├── _inbox/                  ← drop zone; ingester polls here on a schedule
 │   ├── written/                 ← raw pre-ingestion copies of notes you typed (paper trail)
@@ -251,7 +257,7 @@ a single responsibility.
 - Receives all inbound messages and answers, or delegates to a specialist.
 - Owns flows that span specialists: source re-categorisation, note splitting, lost-page
   recovery, missing-note investigation.
-- Reads `CLAUDE.md` at the start of every vault-related session.
+- Reads `AGENTS.md` at the start of every vault-related session.
 
 ### Ingester
 

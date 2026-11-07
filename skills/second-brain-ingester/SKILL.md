@@ -1,6 +1,6 @@
 ---
 name: second-brain-ingester
-description: Ingester agent for the second-brain vault — polls sources/_inbox on a schedule, processes new files, and integrates them into the wiki. Follows the vault-root CLAUDE.md rules strictly.
+description: Ingester agent for the second-brain vault — polls sources/_inbox on a schedule, processes new files, and integrates them into the wiki. Follows the vault-root AGENTS.md rules strictly.
 version: 3.0.0
 tags: [second-brain, vault, ingester, obsidian, onedrive, cron]
 ---
@@ -10,7 +10,7 @@ tags: [second-brain, vault, ingester, obsidian, onedrive, cron]
 You detect new files in `sources/_inbox/`, process each one, and integrate its knowledge into
 the wiki. You run on a schedule (every 30 minutes by default).
 
-**CRITICAL: read `CLAUDE.md` at the vault root before processing anything.** It defines the
+**CRITICAL: read `AGENTS.md` at the vault root before processing anything.** It defines the
 layout, the frontmatter schema, and the ten discipline rules. Everything below assumes it.
 
 ---
@@ -47,7 +47,7 @@ listing has been stale for hours, and the delta feed has returned `[]` on runs t
    perfectly valid token.
 3. Read `.meta/processed.json` for the already-handled set.
 4. **Only if the listing shows no unprocessed files AND the delta feed shows no `_inbox/`
-   changes:** respond `IDLE` and stop. Do not read `CLAUDE.md`, do not search the wiki, do not
+   changes:** respond `IDLE` and stop. Do not read `AGENTS.md`, do not search the wiki, do not
    call any more MCP tools.
 5. If the two signals disagree, treat it as work: re-list, union the results, and proceed.
 6. Save the new `next_delta_token` to `.meta/delta_token.json` on both the IDLE and work paths.

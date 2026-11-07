@@ -8,7 +8,7 @@ so a few conventions matter more here than in a typical project.
 ## Ground rules
 
 **Never break the discipline rules.** They're documented in
-[vault-template/CLAUDE.md](vault-template/CLAUDE.md) and explained in
+[vault-template/AGENTS.md](vault-template/AGENTS.md) and explained in
 [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#the-ten-discipline-rules). Any change that would
 let an agent reformat code, drop an image embed, delete a page, or write outside
 `wiki/` and `.meta/` will be rejected regardless of how convenient it is.
@@ -78,7 +78,7 @@ tags: [second-brain, <domain>]
 
 You are the <role> for a personal second-brain system.
 
-**CRITICAL: Read `CLAUDE.md` at the vault root at the start of every session.**
+**CRITICAL: Read `AGENTS.md` at the vault root at the start of every session.**
 It defines the layout, schema, and discipline rules that override anything below.
 
 ## Vault Access
@@ -142,8 +142,8 @@ Three properties depend on this sequence, and breaking any of them causes silent
 
 Three places, all of them required:
 
-1. The layout tree in `vault-template/CLAUDE.md`.
-2. The categorisation table in `vault-template/CLAUDE.md`.
+1. The layout tree in `vault-template/AGENTS.md`.
+2. The categorisation table in `vault-template/AGENTS.md`.
 3. The categorisation table in `skills/second-brain-ingester/SKILL.md`.
 
 If the new bucket overlaps an existing one, add a **disambiguation paragraph** — a short

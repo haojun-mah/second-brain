@@ -129,10 +129,10 @@ if [ -d "$VAULT_DIR" ]; then
       bad "missing $d/"
     fi
   done
-  if [ -f "$VAULT_DIR/CLAUDE.md" ]; then
-    pass "CLAUDE.md contract present"
+  if [ -f "$VAULT_DIR/AGENTS.md" ]; then
+    pass "AGENTS.md contract present"
   else
-    bad "CLAUDE.md missing — agents need it"
+    bad "AGENTS.md missing — agents need it"
   fi
   if [ -f "$VAULT_DIR/wiki/index.md" ]; then
     pass "wiki/index.md present"

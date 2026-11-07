@@ -540,11 +540,11 @@ mean treating your own notes as errors to be fixed.
 ## Extending the system
 
 **A new source bucket.** Add the folder, add the row to the categorisation table in
-`sources/CLAUDE.md`, add a matching row to the ingester's categorisation table. If the new
+`sources/AGENTS.md`, add a matching row to the ingester's categorisation table. If the new
 bucket is ambiguous against an existing one, add a disambiguation paragraph — the agent
 resolves ties by reading that text, so vagueness costs you misclassified notes.
 
-**A new wiki type.** Add it to the `type` enum in `CLAUDE.md` *and* to the linter's enum
+**A new wiki type.** Add it to the `type` enum in `AGENTS.md` *and* to the linter's enum
 check, or every page using it will be flagged as a schema violation.
 
 **A new agent.** Copy an existing skill directory, write `SKILL.md` with frontmatter

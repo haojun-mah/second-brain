@@ -134,7 +134,7 @@ def upload(dry_run: bool, force: bool) -> int:
     for d in REQUIRED_DIRS:
         ensure_dir(d)
 
-    # Upload the template's real files (CLAUDE.md, index.md, log.md, processed.json, examples).
+    # Upload the template's real files (AGENTS.md, index.md, log.md, processed.json, examples).
     for src in sorted(TEMPLATE.rglob("*")):
         if not src.is_file():
             continue
