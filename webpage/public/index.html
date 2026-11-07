@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Brain</title>
+<link rel="stylesheet" href="vendor/hljs.css" id="hljs-dark">
+<link rel="stylesheet" href="vendor/hljs-light.css" id="hljs-light" disabled>
+<link rel="stylesheet" href="style.css?v2">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧠</text></svg>">
+</head>
+<body>
+<div id="progress"></div>
+<header id="topbar">
+  <div class="brand" id="brand" title="click for confetti"><span class="brain">🧠</span><span class="brand-name">Brain</span></div>
+  <nav class="tabs">
+    <a href="#/" data-tab="home">Notes</a>
+    <a href="#/graph" data-tab="graph">Graph</a>
+    <a href="#/review" data-tab="review">✍ Review</a>
+    <a href="#/galaxy" data-tab="galaxy">✦ Galaxy</a>
+  </nav>
+  <div class="searchbox" id="searchbox">
+    <span class="search-ico">⌕</span>
+    <input id="search" placeholder="Search notes…" autocomplete="off" spellcheck="false">
+    <button id="search-clear" hidden>×</button>
+  </div>
+  <div class="topbar-actions">
+    <button id="random-btn" class="icon-btn" title="Random note (R)">🎲</button>
+    <button id="theme-toggle" class="icon-btn" title="Toggle theme">◐</button>
+    <button id="palette-btn" class="icon-btn" title="Command palette (Ctrl+K)">⌘K</button>
+  </div>
+</header>
+<main id="view"></main>
+<footer id="statusbar"><span id="status">loading…</span></footer>
+
+<div id="scrim" hidden></div>
+
+<div id="palette" hidden>
+  <div class="palette-card">
+    <input id="palette-input" placeholder="Search or run a command…" autocomplete="off" spellcheck="false">
+    <div id="palette-list"></div>
+    <div class="palette-hint"><b>↑↓</b> navigate &nbsp; <b>↵</b> select &nbsp; <b>esc</b> close</div>
+  </div>
+</div>
+
+<div id="help" hidden>
+  <div class="help-card">
+    <h3>Keyboard shortcuts</h3>
+    <table>
+      <tr><td><kbd>Ctrl</kbd>+<kbd>K</kbd></td><td>Command palette</td></tr>
+      <tr><td><kbd>/</kbd></td><td>Focus search</td></tr>
+      <tr><td><kbd>j</kbd> / <kbd>k</kbd></td><td>Next / previous note</td></tr>
+      <tr><td><kbd>g</kbd> then <kbd>g</kbd></td><td>Go to graph</td></tr>
+      <tr><td><kbd>g</kbd> then <kbd>n</kbd></td><td>Go to notes (home)</td></tr>
+      <tr><td><kbd>R</kbd></td><td>Random note</td></tr>
+      <tr><td><kbd>t</kbd></td><td>Toggle theme</td></tr>
+      <tr><td><kbd>?</kbd></td><td>This overlay</td></tr>
+      <tr><td><kbd>esc</kbd></td><td>Close / clear</td></tr>
+    </table>
+    <button id="help-close">close</button>
+  </div>
+</div>
+
+<script src="vendor/hljs.min.js"></script>
+<script src="vendor/cytoscape.min.js"></script>
+<script src="vendor/cytoscape-cose-bilkent.js"></script>
+<script src="vendor/3d-force-graph.min.js"></script>
+<script src="app.js?v2"></script>
+</body>
+</html>
