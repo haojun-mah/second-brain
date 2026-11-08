@@ -130,7 +130,7 @@ fi
 # ── 3. build the MCP server ──────────────────────────────────────────────────
 step "3/6  Building the OneDrive MCP server"
 
-MCP_DIR="$REPO_DIR/mcp-onedrive"
+MCP_DIR="$REPO_DIR/mcp-vault"
 if [ -d "$MCP_DIR" ]; then
   (
     cd "$MCP_DIR" || exit 1
@@ -147,14 +147,14 @@ if [ -d "$MCP_DIR" ]; then
     fi
     info "compiling TypeScript…"
     if npm run build >/tmp/sb_build.log 2>&1; then
-      ok "build complete -> mcp-onedrive/dist/"
+      ok "build complete -> mcp-vault/dist/"
     else
       fail "build failed — see /tmp/sb_build.log"
       exit 1
     fi
   ) || FAILED=1
 else
-  fail "mcp-onedrive/ directory missing"
+  fail "mcp-vault/ directory missing"
   FAILED=1
 fi
 

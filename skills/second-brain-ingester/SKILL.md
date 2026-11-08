@@ -2,7 +2,7 @@
 name: second-brain-ingester
 description: Ingester agent for the second-brain vault — polls sources/_inbox on a schedule, processes new files, and integrates them into the wiki. Follows the vault-root AGENTS.md rules strictly.
 version: 3.0.0
-tags: [second-brain, vault, ingester, obsidian, onedrive, cron]
+tags: [second-brain, vault, ingester, obsidian, cron]
 ---
 
 # Ingester Agent (Second Brain)
@@ -17,17 +17,23 @@ layout, the frontmatter schema, and the ten discipline rules. Everything below a
 
 ## Vault Access
 
-All vault access goes through MCP tools prefixed `mcp_onedrive_`:
+The vault store is configurable — OneDrive, a GitHub repo, or a local folder, selected once
+via `VAULT_BACKEND`. Nothing below changes with the choice: the tools are identical, and
+paths stay vault-root-relative. All vault access goes through MCP tools prefixed
+`mcp_vault_`:
 
 `read_note`, `write_note`, `append_note`, `list_directory`, `move_file`, `search_vault`,
 `get_changes`.
 
 All paths are vault-root-relative.
 
-Scripts in this skill live under `scripts/`. They need `MS_CLIENT_ID`, `MS_TENANT_ID`, and
-`MS_REFRESH_TOKEN` in the environment (Hermes loads `~/.hermes/.env`). Run them with the
-Python interpreter that has the repo scripts importable — `python3` is fine if you ran
-`scripts/bootstrap.sh`, which records `SECOND_BRAIN_HOME`.
+Scripts in this skill live under `scripts/`. Most of them talk to the vault through
+`scripts/_graph.py`, which is the **OneDrive backend's** helper and needs `MS_CLIENT_ID`,
+`MS_TENANT_ID`, and `MS_REFRESH_TOKEN` in the environment (Hermes loads `~/.hermes/.env`).
+On the GitHub or local backend those helpers cannot reach the vault, so do the equivalent
+step with `mcp_vault_*` tools instead — every one of them says which mode it is in. Run any
+script with the Python interpreter that has the repo scripts importable — `python3` is fine
+if you ran `scripts/bootstrap.sh`, which records `SECOND_BRAIN_HOME`.
 
 ---
 
@@ -39,12 +45,14 @@ This runs before any heavy work, so an empty inbox doesn't burn tokens. It requi
 independent empty signals**, because either one alone has failed in practice: the folder
 listing has been stale for hours, and the delta feed has returned `[]` on runs that had work.
 
-1. `mcp_onedrive_list_directory("sources/_inbox")`.
-2. Read `.meta/delta_token.json` and call `mcp_onedrive_get_changes(delta_token)`.
-   **Pass the stored value verbatim — it is the full `nextLink` URL**, e.g.
-   `https://graph.microsoft.com/v1.0/me/drive/root/delta?$select=name&token=…`, not the bare
-   `token=` query parameter. Passing the bare parameter produces `400 Invalid version` on a
-   perfectly valid token.
+1. `mcp_vault_list_directory("sources/_inbox")`.
+2. Read `.meta/delta_token.json` and call `mcp_vault_get_changes(delta_token)`.
+   **Pass the stored value verbatim — it is an opaque cursor.** Its shape depends on the
+   backend: on OneDrive it is the full `nextLink` URL
+   (`https://graph.microsoft.com/v1.0/me/drive/root/delta?$select=name&token=…`), not the
+   bare `token=` query parameter — passing only the parameter produces `400 Invalid version`
+   on a perfectly valid token. On GitHub it is a commit sha; on local it is a JSON mtime map.
+   Never parse or reconstruct it.
 3. Read `.meta/processed.json` for the already-handled set.
 4. **Only if the listing shows no unprocessed files AND the delta feed shows no `_inbox/`
    changes:** respond `IDLE` and stop. Do not read `AGENTS.md`, do not search the wiki, do not
@@ -79,7 +87,7 @@ that abort rather than proceed — that is deliberate.
 
 ### Step 1 — Read and classify
 
-`mcp_onedrive_read_note(path)`, noting the `etag`. Decide: URL note (see Link Ingestion) or a
+`mcp_vault_read_note(path)`, noting the `etag`. Decide: URL note (see Link Ingestion) or a
 note the owner typed. Also note whether the body contains `![[...]]` embeds.
 
 ### Step 2 — Paper trail (owner-typed notes only; skip for URL notes)
@@ -176,7 +184,7 @@ catches a silent drop, and embeds are the most commonly dropped element.
 - `type` unquoted, one of the enum values.
 - Backticks for inline code inside the summary, never around the whole summary.
 
-**Append** with `mcp_onedrive_append_note` rather than rewriting the file — concurrent runs
+**Append** with `mcp_vault_append_note` rather than rewriting the file — concurrent runs
 would clobber each other's edits on a full rewrite.
 
 **Start the append with a leading newline.** If `index.md` has no trailing newline, a row
@@ -208,12 +216,13 @@ a verifier — ad-hoc versions accumulate typos and cost more time than they sav
 
 ### Step 7 — Move the source file
 
-`mcp_onedrive_move_file` from `sources/_inbox/{file}` to `sources/{category}/{file}` per the
+`mcp_vault_move_file` from `sources/_inbox/{file}` to `sources/{category}/{file}` per the
 categorisation table.
 
-If the destination folder doesn't exist, Graph returns a bare `400 invalidRequest`. Workaround:
-`mcp_onedrive_write_note("sources/<bucket>/.keep", "placeholder")` — nested folders auto-create
-— do the move, then `mcp_onedrive_delete_note` the placeholder.
+If the destination folder doesn't exist, some backends refuse the move (OneDrive returns a
+bare `400 invalidRequest`). Workaround, which is harmless everywhere:
+`mcp_vault_write_note("sources/<bucket>/.keep", "placeholder")` — nested folders auto-create
+— do the move, then `mcp_vault_delete_note` the placeholder.
 
 ### Step 8 — Record in `processed.json`
 
@@ -387,9 +396,11 @@ attachment folder.
 python3 scripts/vault_ocr.py "sources/assets/<image-filename>"
 ```
 
-Downloads the image from the vault via Graph and runs RapidOCR locally. Nothing leaves your
-machine. Use `--json` for structured output with confidence scores, or `--local` for a file
-already on disk.
+Downloads the image from the vault and runs RapidOCR locally. Nothing leaves your machine.
+Use `--json` for structured output with confidence scores, or `--local` for a file already on
+disk. On the OneDrive backend the download goes through `scripts/_graph.py`; on GitHub or
+local, stage the image with `mcp_vault_read_note` (it is text-only, so for binaries read the
+file from `SECOND_BRAIN_VAULT` if the vault is also on disk) and pass `--local`.
 
 If image extraction fails (script error, download failure, model error), **do not block the
 rest of the note**. Log the failure in `wiki/log.md`, leave the `![[...]]` embed as-is in the
@@ -446,7 +457,7 @@ These are all real failures, paid for once. Read them before your first run.
 **`write_file` writes to the local filesystem, never to the vault.** A wiki page "written" with
 the generic file tool lands at a local path, and the tool reports success — `dirs_created: true`,
 bytes written. The post-write re-read then 404s on the real vault path. For vault paths the
-only write tool is `mcp_onedrive_write_note`. Local file tools are correct for `/tmp` staging
+only write tool is `mcp_vault_write_note`. Local file tools are correct for `/tmp` staging
 artifacts only.
 
 **Piping a verifier through `tail` hides its exit code.** `cmd 2>&1 | tail -8; echo $?` prints
@@ -511,9 +522,11 @@ signalling failure — exit code 0 does not mean complete extraction.
   (usually just Constraints). Never splice canonical examples into a page whose screen shows
   different ones.
 
-**Vault images have no local copy.** `sources/assets/` files live only in OneDrive. Vision
-tools and local file reads on a local sync path fail. `vault_ocr.py` downloads from Graph
-itself, so the OCR output is your inspection channel.
+**Vault images may have no local copy.** With the OneDrive or GitHub backend, `sources/assets/`
+files live only in the remote store: vision tools and local file reads on a sync path fail.
+`vault_ocr.py` downloads from the OneDrive backend itself, so the OCR output is your
+inspection channel there. With the local backend the files are on disk and vision tools work
+directly. Do not assume — check `VAULT_BACKEND` before reaching for a local path.
 
 **A page that looks truncated may be a faithful copy.** Before filing truncation as a bug, read
 the source. If the source is truncated too, the page is correct (Rules 6 and 9 forbid

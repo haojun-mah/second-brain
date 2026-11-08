@@ -69,15 +69,32 @@ thinking part:
 
 | Component | What it is | Where it runs |
 |---|---|---|
-| **Vault** | A folder of Markdown in OneDrive, opened in Obsidian | Your OneDrive |
-| **`mcp-onedrive`** | TypeScript MCP server exposing 8 vault tools over stdio | Your machine |
+| **Vault** | A folder of Markdown, opened in Obsidian | OneDrive, a GitHub repo, or a local folder |
+| **`mcp-vault`** | TypeScript MCP server exposing 8 vault tools over stdio | Your machine |
 | **4 Hermes skills** | Orchestrator, query, ingester, linter — the agent behaviour | `~/.hermes/skills/` |
 | **Web dashboard** | Static site built from the vault, password-gated | Your machine / VPS |
 | **Cron jobs** | Drive the ingester and linter on a schedule | Hermes cron |
 
-The agents never touch OneDrive directly. Every read and write goes through the MCP
-server, which holds a single OAuth refresh token and speaks Microsoft Graph. That gives
-you one place to audit, one place to revoke.
+The agents never touch storage directly. Every read and write goes through the MCP server,
+which talks to one *backend*. That gives you one place to audit, one place to revoke.
+
+### Pick your backend
+
+The vault is content; the store is swappable. Set `VAULT_BACKEND` and go.
+
+| Backend | Store | Best for | Setup | Credentials |
+|---|---|---|---|---|
+| **`onedrive`** *(default)* | OneDrive via Microsoft Graph | Obsidian on phone + desktop, editing notes in Office apps | ~45 min | `MS_CLIENT_ID`, `MS_TENANT_ID`, `MS_REFRESH_TOKEN` |
+| **`github`** | A GitHub repo | Versioned history of every note, PR review, no Azure, free | ~15 min | `GITHUB_TOKEN`, `GITHUB_VAULT_REPO` |
+| **`local`** | A folder on this machine | Trying it out, offline, single machine, CI | ~5 min | `VAULT_LOCAL_PATH` |
+
+All three expose the **same eight tools** to the **same four agents**, and all three honour
+the same `AGENTS.md` contract — the layout, frontmatter schema, and ten discipline rules are
+properties of the vault, not of the store. Switching backends is an `.env` change plus a
+file move; no agent instruction changes.
+
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#the-storage-layer--pluggable-backends) for
+the backend diagram and how change-detection differs per store.
 
 ---
 
@@ -85,9 +102,9 @@ you one place to audit, one place to revoke.
 
 ```bash
 git clone https://github.com/YOUR-USERNAME/second-brain.git && cd second-brain
-cp .env.example .env && $EDITOR .env          # fill in MS_CLIENT_ID, MS_TENANT_ID, MS_REFRESH_TOKEN
+cp .env.example .env && $EDITOR .env          # set VAULT_BACKEND + that backend's credentials
 ./scripts/bootstrap.sh                        # checks deps, builds MCP server, installs skills, scaffolds vault
-./scripts/healthcheck.sh                      # verifies token, vault layout, MCP build
+./scripts/healthcheck.sh                      # verifies your backend, vault layout, MCP build
 ```
 
 Then start your agent and say *"what's in my inbox?"*
@@ -182,8 +199,9 @@ second-brain/
 │   ├── ARCHITECTURE.md        ← agents, data flow, discipline rules
 │   └── CREDENTIALS.md         ← how to get each credential + security notes
 │
-├── mcp-onedrive/              ← TypeScript MCP server (Microsoft Graph → vault tools)
+├── mcp-vault/                 ← TypeScript MCP server (pluggable storage → vault tools)
 │   ├── src/
+│   │   └── backends/          ← onedrive · github · local
 │   └── package.json
 │
 ├── skills/                    ← the four Hermes skills

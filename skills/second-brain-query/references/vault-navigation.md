@@ -30,7 +30,7 @@ answer.
 
 ### Search first, but don't trust it
 
-`mcp_onedrive_search_vault(query, scope="wiki")` is the fast path. It is also unreliable: the
+`mcp_vault_search_vault(query, scope="wiki")` is the fast path. It is also unreliable: the
 underlying index has returned `[]` for single common words that appear in dozens of pages. An
 empty result means "the index didn't match", not "the vault doesn't have it".
 

@@ -1,8 +1,12 @@
 #!/usr/bin/env bash
 # healthcheck.sh — verify a second-brain installation.
 #
-# Checks: env credentials, Microsoft Graph token validity, vault layout,
-# MCP server build, installed skills, and dashboard presence.
+# Checks: environment, the selected storage backend's reachability
+# (OneDrive / GitHub / local), vault layout, MCP server build, installed
+# skills, and dashboard presence.
+#
+# The backend is chosen by VAULT_BACKEND (onedrive | github | local);
+# only that backend's credentials are required.
 #
 # Usage:
 #   ./scripts/healthcheck.sh
@@ -62,15 +66,57 @@ need_env() {
   fi
 }
 
-need_env MS_CLIENT_ID
-need_env MS_TENANT_ID
-need_env MS_REFRESH_TOKEN
+BACKEND="${VAULT_BACKEND:-onedrive}"
 
-# ── 2. Microsoft Graph ───────────────────────────────────────────────────────
-head_ "2/6  Microsoft Graph access"
+case "$BACKEND" in
+  onedrive)
+    need_env MS_CLIENT_ID
+    need_env MS_TENANT_ID
+    need_env MS_REFRESH_TOKEN
+    ;;
+  github)
+    need_env GITHUB_TOKEN
+    need_env GITHUB_VAULT_REPO
+    ;;
+  local)
+    need_env VAULT_LOCAL_PATH
+    ;;
+  *)
+    bad "unknown VAULT_BACKEND '$BACKEND' (expected onedrive | github | local)"
+    ;;
+esac
 
-if [ -n "${MS_CLIENT_ID:-}" ] && [ -n "${MS_REFRESH_TOKEN:-}" ]; then
-  GRAPH_RESULT=$(python3 - "$REPO_DIR" <<'PY' 2>&1
+# ── 2. storage backend reachability ─────────────────────────────────────────
+head_ "2/6  Vault backend (${VAULT_BACKEND:-onedrive})"
+
+case "$BACKEND" in
+  local)
+    if [ -n "${VAULT_LOCAL_PATH:-}" ] && [ -d "${VAULT_LOCAL_PATH}" ]; then
+      pass "local vault path exists (${VAULT_LOCAL_PATH})"
+    else
+      bad "VAULT_LOCAL_PATH not set or not a directory: '${VAULT_LOCAL_PATH:-}'"
+    fi
+    ;;
+  github)
+    for v in GITHUB_TOKEN GITHUB_VAULT_REPO; do
+      if [ -z "${!v:-}" ]; then bad "$v not set"; fi
+    done
+    if [ -n "${GITHUB_TOKEN:-}" ] && [ -n "${GITHUB_VAULT_REPO:-}" ]; then
+      GH_CODE=$(curl -s -o /tmp/sb_gh_check.json -w '%{http_code}' \
+        -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+        -H "Accept: application/vnd.github+json" \
+        "https://api.github.com/repos/${GITHUB_VAULT_REPO}")
+      case "$GH_CODE" in
+        200) pass "GitHub repo reachable (${GITHUB_VAULT_REPO})" ;;
+        401|403) bad "GitHub token rejected (HTTP $GH_CODE)" ;;
+        404) bad "repo not found or token lacks access: ${GITHUB_VAULT_REPO}" ;;
+        *) bad "GitHub API returned HTTP $GH_CODE" ;;
+      esac
+    fi
+    ;;
+  onedrive|"")
+    if [ -n "${MS_CLIENT_ID:-}" ] && [ -n "${MS_REFRESH_TOKEN:-}" ]; then
+      GRAPH_RESULT=$(python3 - "$REPO_DIR" <<'PY' 2>&1
 import sys, json, pathlib, urllib.request, urllib.parse, urllib.error
 
 repo = pathlib.Path(sys.argv[1])
@@ -113,9 +159,14 @@ PY
     TOKEN_FAIL*) bad "token refresh failed: ${GRAPH_RESULT#TOKEN_FAIL }" ;;
     *)            bad "${GRAPH_RESULT}" ;;
   esac
-else
-  soft "skipped — credentials incomplete"
-fi
+    else
+      soft "skipped — MS credentials incomplete"
+    fi
+    ;;
+  *)
+    bad "unknown VAULT_BACKEND '${VAULT_BACKEND}' (expected onedrive | github | local)"
+    ;;
+esac
 
 # ── 3. vault layout ──────────────────────────────────────────────────────────
 head_ "3/6  Vault layout"
@@ -144,22 +195,22 @@ else
 fi
 
 # ── 4. MCP server build ──────────────────────────────────────────────────────
-head_ "4/6  OneDrive MCP server"
+head_ "4/6  Vault MCP server (mcp-vault)"
 
-MCP_DIR="$REPO_DIR/mcp-onedrive"
+MCP_DIR="$REPO_DIR/mcp-vault"
 if [ -d "$MCP_DIR" ]; then
   if [ -d "$MCP_DIR/node_modules" ]; then
     pass "dependencies installed"
   else
-    bad "node_modules missing — run 'cd mcp-onedrive && npm install'"
+    bad "node_modules missing — run 'cd mcp-vault && npm install'"
   fi
   if [ -f "$MCP_DIR/dist/index.js" ] || [ -f "$MCP_DIR/dist/server.js" ]; then
     pass "compiled output present (dist/)"
   else
-    soft "no dist/ — run 'cd mcp-onedrive && npm run build' (or use bun)"
+    soft "no dist/ — run 'cd mcp-vault && npm run build' (or use bun)"
   fi
 else
-  bad "mcp-onedrive/ missing"
+  bad "mcp-vault/ missing"
 fi
 
 # ── 5. skills ────────────────────────────────────────────────────────────────

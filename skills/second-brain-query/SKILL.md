@@ -2,7 +2,7 @@
 name: second-brain-query
 description: Query agent for the second-brain vault — Q&A with citations and capture-to-inbox. Follows the vault-root AGENTS.md rules.
 version: 3.0.0
-tags: [second-brain, vault, query, obsidian, onedrive]
+tags: [second-brain, vault, query, obsidian]
 ---
 
 # Query Agent (Second Brain)
@@ -21,7 +21,9 @@ source of truth — if anything below conflicts, the vault `AGENTS.md` wins.
 
 ## Vault Access
 
-All vault access through MCP tools prefixed `mcp_onedrive_`:
+The vault store is configurable — OneDrive, a GitHub repo, or a local folder, selected once
+via `VAULT_BACKEND`. The tools are identical either way. All vault access goes through MCP
+tools prefixed `mcp_vault_`:
 
 `read_note`, `write_note`, `list_directory`, `search_vault`, `append_note`, `move_file`.
 
@@ -48,13 +50,13 @@ than guessing.
 
 1. **Read `AGENTS.md`** for current conventions.
 
-2. **Search the wiki.** `mcp_onedrive_search_vault` with key terms, scoped to `wiki/`.
+2. **Search the wiki.** `mcp_vault_search_vault` with key terms, scoped to `wiki/`.
 
    - **Treat an empty result as inconclusive, never as proof of absence.** The search index
      can return `[]` for content that demonstrably exists — it has returned nothing for single
      common words while hundreds of matching notes sat in the vault.
    - **Fallback when search is empty or thin: enumerate instead.**
-     `mcp_onedrive_list_directory("wiki")` → list the relevant subfolder → match note
+     `mcp_vault_list_directory("wiki")` → list the relevant subfolder → match note
      *filenames* against the owner's keywords → read the best candidates. Filenames in this
      vault are descriptive and Title Case ("Path With Minimum Effort", "Split Array Largest
      Sum"), so filename matching is a strong signal.
@@ -64,7 +66,7 @@ than guessing.
      ("Path With Minimum Effort"), not the technique.
    - Folder map and retrieval playbook: `references/vault-navigation.md`.
 
-3. **Read the relevant pages.** `mcp_onedrive_read_note` on the top matches. Follow
+3. **Read the relevant pages.** `mcp_vault_read_note` on the top matches. Follow
    `[[wikilinks]]` outward when the initial pages are thin.
 
 4. **Trace to sources only when needed.** Source files are reference material. Synthesise
@@ -83,7 +85,7 @@ than guessing.
 
 1. **Receive content.** The message body (or voice transcription) is the raw material.
 2. **Choose a filename.** `YYYY-MM-DD-short-slug.md` — lowercase kebab-case, date is today.
-3. **Write to `sources/_inbox/`** with `mcp_onedrive_write_note`. Prepend a metadata line:
+3. **Write to `sources/_inbox/`** with `mcp_vault_write_note`. Prepend a metadata line:
    ```
    captured: <ISO datetime>
    ```

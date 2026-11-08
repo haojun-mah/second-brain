@@ -10,22 +10,32 @@ covers what to change.
 
 ## Summary
 
-| Credential | Required | Grants | Where it lives | Rotation |
-|---|---|---|---|---|
-| `MS_CLIENT_ID` | Yes | Identifies your app | `.env`, `~/.hermes/.env` | Not secret; rotate only if you delete the app |
-| `MS_TENANT_ID` | Yes | Which directory to authenticate against | `.env` | Not secret |
-| `MS_REFRESH_TOKEN` | Yes | **Read/write to your entire OneDrive** | `.env`, `~/.hermes/.env` | **Yes — treat as a password** |
-| `BRAIN_PASSWORD` | Dashboard only | Access to the read-only web view | `.env` → `auth.json` | Yes, periodically |
-| `GROQ_API_KEY` | Voice notes only | Transcription API calls | `.env` | Yes |
-| `TELEGRAM_OWNER_ID` | Telegram only | Not a secret — an allowlist | `.env` | n/a |
+You only need the credentials for **one** backend — the one named by `VAULT_BACKEND`.
 
-Only `MS_REFRESH_TOKEN` and `BRAIN_PASSWORD` are genuine secrets. The client and tenant IDs
-appear in every OAuth URL and are not sensitive on their own — but keep them out of public
-repos anyway, because knowing them narrows an attacker's search.
+| Credential | Backend | Grants | Where it lives | Rotation |
+|---|---|---|---|---|
+| `MS_CLIENT_ID` | onedrive | Identifies your app | `.env`, `~/.hermes/.env` | Not secret; rotate only if you delete the app |
+| `MS_TENANT_ID` | onedrive | Which directory to authenticate against | `.env` | Not secret |
+| `MS_REFRESH_TOKEN` | onedrive | **Read/write to your entire OneDrive** | `.env`, `~/.hermes/.env` | **Yes — treat as a password** |
+| `GITHUB_TOKEN` | github | Read/write to the vault repo | `.env`, `~/.hermes/.env` | **Yes — treat as a password** |
+| `GITHUB_VAULT_REPO` | github | Which repo is the vault | `.env` | Not secret |
+| `VAULT_LOCAL_PATH` | local | *(no credential)* path to the vault folder | `.env` | n/a |
+| `BRAIN_PASSWORD` | dashboard | Access to the read-only web view | `.env` → `auth.json` | Yes, periodically |
+| `GROQ_API_KEY` | voice notes | Transcription API calls | `.env` | Yes |
+| `TELEGRAM_OWNER_ID` | telegram | Not a secret — an allowlist | `.env` | n/a |
+
+The genuine secrets are `MS_REFRESH_TOKEN`, `GITHUB_TOKEN`, and `BRAIN_PASSWORD`. The client,
+tenant, and repo IDs appear in OAuth URLs and are not sensitive on their own — but keep them
+out of public repos anyway, because knowing them narrows an attacker's search.
+
+**A `local` backend needs no credentials at all.** That makes it the right choice for a
+throwaway evaluation, a CI job, or any machine you do not fully trust with a cloud token.
 
 ---
 
 ## Microsoft Graph credentials
+
+*(only for `VAULT_BACKEND=onedrive`)*
 
 ### `MS_CLIENT_ID` and `MS_TENANT_ID`
 
@@ -149,6 +159,64 @@ chmod 600 ~/.hermes/.env
 
 `600` means owner-read-write only. On a single-user machine that's sufficient. On a shared
 host, also check that your home directory isn't world-readable (`chmod 750 ~`).
+
+---
+
+## GitHub credentials
+
+*(only for `VAULT_BACKEND=github`)*
+
+### `GITHUB_TOKEN`
+
+A personal access token with read/write access to **one** repository — your vault.
+
+**Fine-grained token (recommended):**
+
+1. GitHub → **Settings** → **Developer settings** → **Personal access tokens** →
+   **Fine-grained tokens** → *Generate new token*
+2. **Repository access:** *Only select repositories* → your vault repo
+3. **Permissions** → *Repository permissions* → **Contents: Read and write**
+4. Generate, copy once, and paste into `.env` as `GITHUB_TOKEN`
+
+**Classic token (simpler, broader):** Settings → Developer settings → *Tokens (classic)* →
+generate with the single `repo` scope. This grants access to **every** repo you can see, so
+prefer fine-grained unless you have a reason not to.
+
+### `GITHUB_VAULT_REPO`
+
+The `owner/repo` slug, e.g. `yourname/second-brain-vault`. Not a secret, but private.
+
+### `GITHUB_VAULT_BRANCH`
+
+Optional, defaults to `main`.
+
+### What the token can do
+
+`Contents: write` on the vault repo means the server can create, modify, and delete files
+there — which is exactly what the ingester needs, and exactly why the token should be scoped
+to one repo. It cannot touch your other repositories, your account settings, or CI secrets.
+
+**Rotate it** if it ever lands in a shell history, a log, or a commit. GitHub lets you
+regenerate a fine-grained token in place, so the repo stays the same.
+
+---
+
+## Local backend credentials
+
+*(only for `VAULT_BACKEND=local`)*
+
+None. There is nothing to authenticate — the server reads and writes a directory you already
+own. Set `VAULT_LOCAL_PATH` to an absolute path.
+
+Set the path to be something you already back up, or accept that the vault lives and dies
+with that disk. Ideas that cost nothing:
+
+- a Dropbox / iCloud Drive / Syncthing folder → free sync across machines
+- a git working copy → free history
+- anything under `/tmp` → **do not do this**; it is wiped on reboot on most systems
+
+File permissions are yours to set; the server runs as your user and creates files with your
+umask.
 
 ---
 

@@ -52,7 +52,7 @@ def find_scripts_dir() -> Path:
 
 sys.path.insert(0, str(find_scripts_dir()))
 
-from _graph import GraphClient, VaultError, load_env  # noqa: E402
+from _graph import GraphClient, VaultError, load_env, require_onedrive_backend  # noqa: E402
 
 
 def read_record() -> dict:
@@ -78,6 +78,7 @@ def read_record() -> dict:
 
 def main() -> int:
     load_env()
+    require_onedrive_backend()
     record = read_record()
 
     try:

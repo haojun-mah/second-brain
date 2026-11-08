@@ -59,7 +59,10 @@ linter produces a report about the wrong directory.
 
 ## Vault Access
 
-The vault lives in OneDrive. All access goes through MCP tools prefixed `mcp_onedrive_`:
+The vault lives in whichever store the installation is configured against — OneDrive, a
+GitHub repo, or a local folder. That choice is made once in `VAULT_BACKEND` and is invisible
+from here: every backend exposes the same tools. All access goes through MCP tools prefixed
+`mcp_vault_`:
 
 `read_note`, `write_note`, `append_note`, `list_directory`, `search_vault`, `move_file`,
 `delete_note`, `get_changes`.
@@ -76,12 +79,12 @@ share the name while reporting success.
 ## Q&A Flow
 
 1. Read `AGENTS.md` for current conventions.
-2. Search the wiki: `mcp_onedrive_search_vault(query, scope="wiki")`.
+2. Search the wiki: `mcp_vault_search_vault(query, scope="wiki")`.
    - **Treat empty results as inconclusive, never as proof of absence.** The search index
      returns `[]` for content that demonstrably exists — single common words included. If the
      search comes back empty on something you expect to exist, fall back to
-     `mcp_onedrive_list_directory` and match against filenames.
-3. Read the matching pages with `mcp_onedrive_read_note(path)`.
+     `mcp_vault_list_directory` and match against filenames.
+3. Read the matching pages with `mcp_vault_read_note(path)`.
 4. Trace to `sources/` only when the wiki pages are insufficient. Source files are reference
    material; synthesise through the wiki layer first.
 5. Cite everything: `[[Page Name]]` for wiki pages, `(source: sources/articles/foo.md)` for
@@ -138,7 +141,7 @@ A lint finding or the owner reports a broken `[[Wikilink]]` and the target page 
 gone (its parent directory listing and a full-vault search both return nothing under `wiki/`).
 Recover the page — do not delete the link.
 
-1. **Find the source file.** `mcp_onedrive_search_vault(query, scope="sources")`. Wiki pages
+1. **Find the source file.** `mcp_vault_search_vault(query, scope="sources")`. Wiki pages
    are usually rebuildable from their source, and the slug often matches the title lowercased
    with hyphens.
 2. **Read the source.** If it's thin — just an image embed and a line or two — reconstruct from
@@ -165,7 +168,7 @@ Recover the page — do not delete the link.
 The owner reports a note as missing or asks whether it was ingested. Investigate before
 claiming loss.
 
-1. `mcp_onedrive_search_vault` by name **and spelling variants** — people mistype their own
+1. `mcp_vault_search_vault` by name **and spelling variants** — people mistype their own
    filenames.
 2. List `sources/_inbox/`. An empty inbox is not evidence of loss; the ingester empties it on
    purpose. Check `.meta/processed.json` for the entry (`file`, `processed_at`, `moved_to`).
@@ -202,12 +205,12 @@ the owner cancels.
 The owner names one file and asks to put it in the right bucket, explicitly without parsing it
 ("move this into interviews, don't parse it").
 
-1. **Locate it.** `mcp_onedrive_search_vault(query=<name>)`. On a miss, list the likely source
+1. **Locate it.** `mcp_vault_search_vault(query=<name>)`. On a miss, list the likely source
    folders — `sources/drafts/` is where hand-dropped files usually start.
 2. **Resolve the destination from the vault's actual layout**, not from the AGENTS.md table
    alone. Search `scope="sources"` for a bucket hint to see where sibling files of that class
    live. If the destination folder doesn't exist, create it with the placeholder trick below.
-3. **`mcp_onedrive_move_file(from, to)` — one call, nothing else.** "Don't parse it" means: no
+3. **`mcp_vault_move_file(from, to)` — one call, nothing else.** "Don't parse it" means: no
    frontmatter fixups, no wiki page, no index/log/processed.json bookkeeping, no content edits.
    This is a file move, not an ingest.
 4. **Verify.** Read the file back at the new path (content unchanged) and confirm the old path
@@ -233,11 +236,12 @@ The owner asks to audit and reclassify files in `sources/`. This is yours, not t
    - Anything else → `sources/articles/`, or `sources/drafts/` for draft chunks
    - Ambiguous cases: pick the most specific bucket and **flag the file in your reply** so the
      owner can veto it.
-3. **Create missing destination folders with the placeholder trick.** OneDrive's move API
-   returns `400 invalidRequest` if the target folder doesn't exist:
-   `mcp_onedrive_write_note("sources/<folder>/.keep", "placeholder")` — nested folders
-   auto-create — then do the moves, then `mcp_onedrive_delete_note` the placeholders.
-4. **Move everything** in one batched turn of `mcp_onedrive_move_file` calls. They're
+3. **Create missing destination folders with the placeholder trick.** Some backends refuse a
+   move into a folder that doesn't exist yet (OneDrive returns a bare `400 invalidRequest`):
+   `mcp_vault_write_note("sources/<folder>/.keep", "placeholder")` — nested folders
+   auto-create — then do the moves, then `mcp_vault_delete_note` the placeholders. Harmless
+   on backends that create folders on demand; keep doing it and the flow works everywhere.
+4. **Move everything** in one batched turn of `mcp_vault_move_file` calls. They're
    independent; run them concurrently.
 5. **Re-list the source folder** to confirm it's empty. Files can land while you work — a late
    arrival mid-run should be classified and moved too.

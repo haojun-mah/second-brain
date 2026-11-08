@@ -64,7 +64,7 @@ def find_scripts_dir() -> Path:
 
 sys.path.insert(0, str(find_scripts_dir()))
 
-from _graph import GraphClient, VaultError, load_env  # noqa: E402
+from _graph import GraphClient, VaultError, load_env, require_onedrive_backend  # noqa: E402
 
 
 def fetch_with_etag(client: GraphClient, path: str) -> tuple[bytes, str]:
@@ -148,6 +148,7 @@ def main() -> int:
         return 1
 
     load_env()
+    require_onedrive_backend()
     try:
         client = GraphClient()
     except VaultError as e:

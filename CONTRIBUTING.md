@@ -35,7 +35,7 @@ git clone https://github.com/YOUR-USERNAME/second-brain.git
 cd second-brain
 
 # MCP server
-cd mcp-onedrive && npm install && npm run typecheck && npm run build && cd ..
+cd mcp-vault && npm install && npm run typecheck && npm run build && cd ..
 
 # Web dashboard
 cd webpage && npm install && cd ..
@@ -82,7 +82,7 @@ You are the <role> for a personal second-brain system.
 It defines the layout, schema, and discipline rules that override anything below.
 
 ## Vault Access
-<List the mcp_onedrive_* tools you use and nothing else. Narrow permissions are a feature.>
+<List the mcp_vault_* tools you use and nothing else. Narrow permissions are a feature.>
 
 ## <Your main flow>
 <Numbered steps. Be explicit about ordering when order matters.>
@@ -113,6 +113,50 @@ It defines the layout, schema, and discipline rules that override anything below
 If it's scheduled, add a cron job (see
 [SETUP.md step 7](docs/SETUP.md#7-schedule-the-agents)). If it's invoked on demand, the
 orchestrator needs to know it exists — add a row to its routing table.
+
+---
+
+## Adding a storage backend
+
+The vault server is backend-agnostic. If your store speaks an API, you can support it.
+
+1. **Read the interface.** `mcp-vault/src/backends/types.ts` defines `VaultBackend`:
+
+   ```ts
+   read(path): Promise<string>
+   write(path, content): Promise<void>          // create or overwrite
+   append(path, content): Promise<void>         // create if absent
+   list(path, opts?): Promise<VaultEntry[]>     // opts.recursive
+   move(from, to): Promise<void>
+   remove(path): Promise<void>
+   search(query, scope?): Promise<SearchHit[]>
+   changes(token?): Promise<{ changes: VaultEntry[], nextToken: string }>
+   ```
+
+   All paths are **vault-root-relative with no leading slash**. Throw
+   `VaultNotFoundError` for a missing path and `EtagMismatchError` on a lost write race —
+   the tool layer maps both to the same user-facing errors every backend produces.
+
+2. **Implement it.** Create `mcp-vault/src/backends/<name>.ts`. Look at `local.ts` for the
+   smallest complete example, and `github.ts` for one that paginates a remote API.
+
+3. **Extend the config.** Add the fields your backend needs to `VaultConfig` in
+   `mcp-vault/src/config.ts`, plus a `'<name>'` member on `BackendKind`, and validate them
+   in `loadConfig()` with a message naming any missing env var.
+
+4. **Register it.** Add the case to `createBackend()` in `backends/index.ts`. The
+   `switch` is exhaustive, so TypeScript will refuse to compile until you do.
+
+5. **Document it.** Add a track to `docs/SETUP.md`, a section to `docs/CREDENTIALS.md`, a
+   row to the backend table in `README.md`, and an entry to `.env.example`.
+
+6. **Test it without the network.** Every backend must pass the same contract checks:
+   write → read → append → list → search → changes (initial, then after a mutation) →
+   move → remove → 404 on a missing path. Mirror the `local` backend smoke test.
+
+Please do **not** add a backend-specific tool. If a capability cannot be expressed through
+`VaultBackend`, widen the interface and implement it everywhere — the four agent skills
+must keep working unchanged against every store.
 
 ---
 
@@ -199,7 +243,7 @@ content is silently wrong. That's why the shipped helpers byte-verify rather tha
 ## Changing the MCP server
 
 ```bash
-cd mcp-onedrive
+cd mcp-vault
 npm run typecheck    # must pass
 npm run build
 ```
@@ -269,7 +313,7 @@ Include:
 
 - What you expected, what happened.
 - The agent's output, with any credentials redacted.
-- Which component (`mcp-onedrive`, a specific skill, `webpage`, a script).
+- Which component (`mcp-vault`, a specific skill, `webpage`, a script).
 - Your Hermes version and Node/Python versions.
 
 If the bug is "the agent did something destructive to my vault", say so in the title. Those

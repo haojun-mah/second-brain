@@ -1,14 +1,30 @@
 # Setup
 
 Everything you need to go from a fresh clone to a working second brain. Budget about
-**45 minutes**, most of it waiting on Azure's UI.
+**45 minutes** for the OneDrive track (most of it waiting on Azure's UI), **15 minutes**
+for GitHub, or **5 minutes** for local.
 
 There are seven steps. Do them in order — each one depends on the last.
 
+## First: pick your storage backend
+
+The vault lives in a *store*. The MCP server abstracts the store, so the same agents and
+skills work against any of these. You choose once, via `VAULT_BACKEND` in `.env`.
+
+| Backend | Store | Best for | Credentials | Setup |
+|---|---|---|---|---|
+| **`onedrive`** (default) | Your OneDrive, via Microsoft Graph | Syncing across devices with Obsidian mobile, editing from Excel/Word | `MS_CLIENT_ID`, `MS_TENANT_ID`, `MS_REFRESH_TOKEN` | ~45 min |
+| **`github`** | A GitHub repo | Versioned history of every note, PR review, free, no Azure | `GITHUB_TOKEN`, `GITHUB_VAULT_REPO` | ~15 min |
+| **`local`** | A folder on this machine | Trying it out, offline use, single machine, CI | `VAULT_LOCAL_PATH` | ~5 min |
+
+All three support the same eight vault tools, the same `AGENTS.md` contract, and the same
+agents. You can switch later by changing `VAULT_BACKEND` and moving your files.
+
+Then follow the seven steps, substituting your backend's credential section for step 1–2:
+
 | Step | What you get | Time |
 |---|---|---|
-| [1. Azure app registration](#1-azure-app-registration) | `MS_CLIENT_ID`, `MS_TENANT_ID` | 10 min |
-| [2. Capture a refresh token](#2-capture-a-refresh-token) | `MS_REFRESH_TOKEN` | 5 min |
+| [1–2. Credentials](#credentials) | Backend credentials (pick one track) | 5–30 min |
 | [3. Install the MCP server](#3-install-the-mcp-server) | A working bridge to your vault | 5 min |
 | [4. Wire it into Hermes](#4-wire-it-into-hermes) | Agent can call vault tools | 5 min |
 | [5. Install the skills](#5-install-the-skills) | The four agents | 2 min |
@@ -23,6 +39,7 @@ There are seven steps. Do them in order — each one depends on the last.
 node --version      # need >= 18
 python3 --version   # need >= 3.10
 curl --version
+git --version
 hermes --version    # Hermes Agent CLI on PATH
 ```
 
@@ -30,7 +47,25 @@ If Hermes is missing, install it first: <https://hermes-agent.nousresearch.com/d
 
 ---
 
-## 1. Azure app registration
+<a id="credentials"></a>
+## 1–2. Credentials
+
+Set `VAULT_BACKEND` first, then follow **only** the matching track.
+
+```bash
+# .env
+VAULT_BACKEND=onedrive     # or: github | local
+VAULT_ROOT=Obsidian        # folder inside the store that holds the vault
+```
+
+> **Local backend:** `VAULT_ROOT` is ignored — `VAULT_LOCAL_PATH` points straight at the
+> vault folder.
+
+---
+
+### Track A — OneDrive (default)
+
+#### 1. Azure app registration
 
 The MCP server authenticates as *you* against Microsoft Graph. That requires an app
 registration — a free, self-owned identity in Microsoft Entra ID. You are not registering
@@ -185,13 +220,86 @@ The `refresh_token` field in the final response is your `MS_REFRESH_TOKEN`.
 
 ---
 
+### Track B — GitHub (~15 min)
+
+A GitHub repo is a perfectly good vault store: free, versioned, and every ingester run
+becomes a commit you can review or revert. No Azure, no OAuth dance.
+
+#### 1. Create the vault repo
+
+Create a **private** repository (e.g. `yourname/second-brain-vault`). It can be empty —
+the server creates files as the agents write them.
+
+```bash
+# optional, but gives you a local copy to browse in Obsidian
+git clone git@github.com:yourname/second-brain-vault.git
+```
+
+#### 2. Mint a token
+
+1. GitHub → **Settings** → **Developer settings** → **Personal access tokens**
+2. Use **Fine-grained tokens** → *Generate new token*
+3. **Repository access:** *Only select repositories* → pick your vault repo
+4. **Permissions:** *Contents* → **Read and write**
+   (add *Metadata: read* — GitHub selects it automatically)
+5. Generate and copy the token once — it is not shown again
+
+> A classic token with the single `repo` scope also works, but is broader than needed.
+> Fine-grained scoped to one repo is the safer choice.
+
+#### 3. Set the env
+
+```bash
+# .env
+VAULT_BACKEND=github
+GITHUB_TOKEN=github_pat_...           # the token from step 2
+GITHUB_VAULT_REPO=yourname/second-brain-vault
+GITHUB_VAULT_BRANCH=main              # optional, defaults to main
+VAULT_ROOT=                           # leave empty to use the repo root as the vault
+```
+
+> Unlike OneDrive, the GitHub backend treats the **repo root as the vault root** when
+> `VAULT_ROOT` is empty. Set `VAULT_ROOT=Obsidian` only if your vault lives in a
+> subfolder of the repo.
+
+#### Notes and limits
+
+- **Every write is one API call and one commit.** The ingester writing 5 notes = 5 commits.
+  That is a feature (auditable history) but worth knowing before a large backfill.
+- **Rate limits:** 5,000 requests/hour authenticated — ample for a personal vault.
+- **`search` is a grep over the tree**, capped at ~200 files / 2 MB per file per call. On a
+  very large vault prefer `list_directory` plus targeted `read_note`.
+- **`get_changes`** returns a commit SHA; passing it back reports what changed since.
+
+---
+
+### Track C — Local folder (~5 min)
+
+Simplest option, nothing to authenticate. Great for evaluating the system, for offline use,
+or for CI.
+
+```bash
+# .env
+VAULT_BACKEND=local
+VAULT_LOCAL_PATH=/home/you/SecondBrainVault
+```
+
+That's it — create the folder (step 6 does it for you) and skip to
+[3. Install the MCP server](#3-install-the-mcp-server).
+
+**Trade-offs:** no automatic sync between machines and no off-device backup. Point
+`VAULT_LOCAL_PATH` at a Dropbox/iCloud/Syncthing folder if you want sync, or at a git
+working copy if you want history.
+
+---
+
 ## 3. Install the MCP server
 
 The MCP server is a small TypeScript program. It reads JSON-RPC over stdin/stdout, so it
 has no port, no daemon, and no network listener — Hermes spawns it as a child process.
 
 ```bash
-cd mcp-onedrive
+cd mcp-vault
 npm install --no-audit --no-fund
 npm run build          # tsc → dist/
 ```
@@ -236,20 +344,44 @@ Add this block (merge it into the existing `mcp_servers:` key if you already hav
 
 ```yaml
 mcp_servers:
-  onedrive:
+  vault:
     command: node
     args:
-      - /absolute/path/to/second-brain/mcp-onedrive/dist/index.js
+      - /absolute/path/to/second-brain/mcp-vault/dist/index.js
     env:
+      VAULT_BACKEND: "onedrive"        # onedrive | github | local
+      VAULT_ROOT: "Obsidian"
       MS_CLIENT_ID: "${MS_CLIENT_ID}"
       MS_TENANT_ID: "${MS_TENANT_ID}"
       MS_REFRESH_TOKEN: "${MS_REFRESH_TOKEN}"
-      MS_VAULT_ROOT: "Obsidian"
     timeout: 60
 ```
 
-Replace the path with the real absolute path on your machine (`pwd` inside `mcp-onedrive`,
+Replace the path with the real absolute path on your machine (`pwd` inside `mcp-vault`,
 then append `/dist/index.js`).
+
+**Only the keys for your backend are needed.** The three variants:
+
+```yaml
+# GitHub
+    env:
+      VAULT_BACKEND: "github"
+      VAULT_ROOT: ""                   # repo root is the vault
+      GITHUB_TOKEN: "${GITHUB_TOKEN}"
+      GITHUB_VAULT_REPO: "yourname/second-brain-vault"
+      GITHUB_VAULT_BRANCH: "main"
+```
+
+```yaml
+# Local
+    env:
+      VAULT_BACKEND: "local"
+      VAULT_LOCAL_PATH: "/home/you/SecondBrainVault"
+```
+
+> Values are read from the environment, so keep the real secrets in
+> `~/.hermes/.env` (or export them) rather than pasting them into `config.yaml`.
+> The server fails fast at startup naming the exact variable that is missing.
 
 ### About the env block
 
@@ -276,7 +408,7 @@ Or just start Hermes and ask:
 list the contents of sources/_inbox
 ```
 
-The agent should call `mcp_onedrive_list_directory`. If it says it has no such tool, the
+The agent should call `mcp_vault_list_directory`. If it says it has no such tool, the
 `mcp_servers` block didn't parse — check your YAML indentation. If it errors with
 `Token refresh failed (400)`, your refresh token is bad; redo step 2.
 
@@ -475,17 +607,17 @@ Your delta token expired. Run
 `python3 skills/second-brain-ingester/scripts/rotate_delta_token.py`. The ingester falls back
 to directory listing on its own, so this is not urgent.
 
-**Agent says it has no `mcp_onedrive_*` tools**
+**Agent says it has no `mcp_vault_*` tools**
 The `mcp_servers` block isn't being read. Check YAML indentation (two spaces, under the
 top-level key), then `hermes mcp list`.
 
 **Wiki pages write to the local filesystem instead of OneDrive**
-Something used `write_file` on a vault path. Vault I/O must go through `mcp_onedrive_*`
+Something used `write_file` on a vault path. Vault I/O must go through `mcp_vault_*`
 tools only — the local tools resolve against your machine's filesystem. The skills call this
 out explicitly; if you're writing your own skill, do the same.
 
 **`tsc` errors about missing types**
-Run `npm install` inside `mcp-onedrive/` first. The `@types/bun` package provides the
+Run `npm install` inside `mcp-vault/` first. The `@types/bun` package provides the
 ambient types for `fetch` and the top-level `await` in `index.ts`.
 
 ---

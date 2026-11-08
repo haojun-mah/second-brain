@@ -1,5 +1,21 @@
 #!/usr/bin/env python3
-"""Shared Microsoft Graph helpers for the second-brain scripts.
+"""Microsoft Graph helpers — ONE DRIVE BACKEND ONLY.
+
+    ┌──────────────────────────────────────────────────────────────────────┐
+    │  This module is the OneDrive backend's helper. It speaks Microsoft   │
+    │  Graph and nothing else. It is the only place in scripts/ that does. │
+    │                                                                      │
+    │  VAULT_BACKEND=onedrive  → import it (the default)                   │
+    │  VAULT_BACKEND=github    → do NOT import it; use the mcp_vault_*     │
+    │  VAULT_BACKEND=local     → do NOT import it; use plain file I/O or   │
+    │                            the mcp_vault_* tools                     │
+    └──────────────────────────────────────────────────────────────────────┘
+
+The vault itself is backend-agnostic: `mcp-vault/` exposes one `VaultBackend` interface with
+OneDrive, GitHub and local implementations. This file exists because a handful of helper
+scripts need raw byte access (byte-verified splices, OCR downloads) and cannot go through the
+MCP layer. Every script that imports it is OneDrive-specific by construction; scripts that
+work on any backend must not.
 
 Import this from other scripts in this directory:
 
@@ -20,7 +36,7 @@ It handles the three things every script needs and gets wrong at least once:
      a file. Every read is checked before it is trusted.
 
 Credentials come from the environment (or .env): MS_CLIENT_ID, MS_TENANT_ID, MS_REFRESH_TOKEN,
-and optionally MS_VAULT_ROOT (default "Obsidian").
+and optionally VAULT_ROOT (default "Obsidian"; the legacy MS_VAULT_ROOT is still honoured).
 """
 
 from __future__ import annotations
@@ -72,7 +88,10 @@ class GraphClient:
         self.tenant_id = os.environ.get("MS_TENANT_ID", "").strip() or "common"
         self.refresh_token = os.environ.get("MS_REFRESH_TOKEN", "").strip()
         self.vault_root = (
-            vault_root or os.environ.get("MS_VAULT_ROOT", "").strip() or DEFAULT_VAULT_ROOT
+            vault_root
+            or os.environ.get("VAULT_ROOT", "").strip()
+            or os.environ.get("MS_VAULT_ROOT", "").strip()
+            or DEFAULT_VAULT_ROOT
         ).strip("/")
 
         missing = [
@@ -253,9 +272,31 @@ def resolve_vault_path(*candidates: str) -> str:
     return ""
 
 
+def require_onedrive_backend(tool_hint: str = "") -> None:
+    """Abort with an actionable message when VAULT_BACKEND is not `onedrive`.
+
+    Every script that imports this module is OneDrive-specific. When the installation is
+    configured for GitHub or local, the correct behaviour is to stop and say so — silently
+    failing with a missing-credential error would send the reader chasing the wrong problem.
+
+    Call this first, before constructing a GraphClient.
+    """
+    backend = os.environ.get("VAULT_BACKEND", "").strip().lower() or "onedrive"
+    if backend == "onedrive":
+        return
+    hint = f" Use {tool_hint} instead." if tool_hint else ""
+    raise SystemExit(
+        f"error: this helper only works with VAULT_BACKEND=onedrive "
+        f"(current: {backend}).{hint}\n"
+        f"  The vault itself is backend-agnostic — see mcp-vault/src/backends/. "
+        f"Scripts that need raw bytes only exist for the OneDrive path."
+    )
+
+
 if __name__ == "__main__":
     # Smoke test: `python3 scripts/_graph.py`
     load_env()
+    require_onedrive_backend()
     try:
         g = GraphClient()
         token = g.token()

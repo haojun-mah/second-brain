@@ -2,7 +2,7 @@
 name: second-brain-linter
 description: Linter agent for the second-brain vault — periodic audit and conservative repair. Follows the vault-root AGENTS.md rules.
 version: 3.0.0
-tags: [second-brain, vault, linter, obsidian, onedrive, cron]
+tags: [second-brain, vault, linter, obsidian, cron]
 ---
 
 # Linter Agent (Second Brain)
@@ -19,7 +19,9 @@ rules.
 
 ## Vault Access
 
-All access through MCP tools prefixed `mcp_onedrive_`:
+The vault store is configurable — OneDrive, a GitHub repo, or a local folder, selected once
+via `VAULT_BACKEND`. The tool set is identical either way. All access goes through MCP tools
+prefixed `mcp_vault_`:
 
 - `read_note(path)` → `{ content, etag, last_modified }`
 - `write_note(path, content, if_match?)` → `{ etag }`
@@ -28,9 +30,11 @@ All access through MCP tools prefixed `mcp_onedrive_`:
 - `search_vault(query, scope?)` → search results
 
 For byte-exact single-line edits on large files, use `scripts/vault_byte_edit.py` — it asserts
-the old string occurs exactly once, PUTs with an If-Match guard, and byte-compares after. A
+the old string occurs exactly once, PUTs with an If-Match guard, and byte-compares after. It
+talks to the OneDrive backend through `scripts/_graph.py`; on GitHub or local, read the full
+file with `mcp_vault_read_note`, edit, and write it back with the `etag` as `if_match`. A
 full-content rewrite to fix one typo risks a transcription error in a code fence (Rule 9) or a
-dropped embed (Rule 8), and neither shows up in a success response.
+dropped embed (Rule 8), and neither shows up in a success response — so verify by re-reading.
 
 ---
 
@@ -280,7 +284,7 @@ sources: []
 
 ## Log Entry Format
 
-Append to `wiki/log.md` with `mcp_onedrive_append_note`:
+Append to `wiki/log.md` with `mcp_vault_append_note`:
 
 ```
 ## {ISO timestamp} — linter
@@ -308,7 +312,7 @@ Append to `wiki/log.md` with `mcp_onedrive_append_note`:
 
 ## `last_lint.json` Format
 
-Write with `mcp_onedrive_write_note(".meta/last_lint.json", ...)`:
+Write with `mcp_vault_write_note(".meta/last_lint.json", ...)`:
 
 ```json
 {
@@ -350,12 +354,14 @@ Write with `mcp_onedrive_write_note(".meta/last_lint.json", ...)`:
 
 ### `patch` does not work on vault files
 
-The local tools operate on your machine's filesystem; vault files live in OneDrive and are
-reachable only through `mcp_onedrive_*`. To edit a vault file: read the full content, modify it
-in memory, write the whole thing back. There is no atomic find-and-replace.
+The local tools operate on your machine's filesystem; vault files live in the configured
+store (OneDrive, GitHub, or a directory the MCP server owns) and are reachable only through
+`mcp_vault_*`. To edit a vault file: read the full content, modify it in memory, write the
+whole thing back. There is no atomic find-and-replace.
 
-For a one-line edit on a large file, use `scripts/vault_byte_edit.py` instead of a full rewrite.
-Three Graph API details it encodes, each of which cost a debugging cycle:
+For a one-line edit on a large file on the **OneDrive** backend, use
+`scripts/vault_byte_edit.py` instead of a full rewrite. Three Graph API details it encodes,
+each of which cost a debugging cycle:
 
 - **Content GETs 302-redirect to a pre-authorised URL that rejects the Authorization header.**
   Python's urllib copies headers across redirects; OneDrive's target 401s. Symptom: `HTTP 401`

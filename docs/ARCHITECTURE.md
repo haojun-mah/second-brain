@@ -43,9 +43,75 @@ strict as they are.
 │  PRESENTATION LAYER  —  webpage/                                         │
 │  static site: note browser · search · graph · galaxy · flashcards        │
 └──────────────────────────────────────────────────────────────────────────┘
-
-        .meta/  — agent bookkeeping (processed.json, delta_token.json, lint state)
 ```
+
+---
+
+## The storage layer — pluggable backends
+
+The vault is *content*; where that content physically lives is a swappable detail. Every
+agent talks to eight `mcp_vault_*` tools. Those tools never touch a network or a filesystem
+directly — they call a `VaultBackend`, and one of three implementations answers.
+
+```
+┌───────────────────────────────────────────────────────────────────────────┐
+│  AGENTS                                                                   │
+│  orchestrator · query · ingester · linter · you (via the web dashboard)   │
+└───────────────────────────────────┬───────────────────────────────────────┘
+                                    │  call 8 tools
+                                    ▼
+┌───────────────────────────────────────────────────────────────────────────┐
+│  mcp_vault_* tool layer        (mcp-vault/src/tools/)                     │
+│                                                                           │
+│   read_note      write_note     append_note    list_directory             │
+│   move_file      delete_note    search_vault   get_changes                │
+│                                                                           │
+│   Identical schemas and error semantics regardless of backend.            │
+└───────────────────────────────────┬───────────────────────────────────────┘
+                                    │  VaultBackend interface
+                                    │  read · write · append · list
+                                    │  move · remove · search · changes
+                                    ▼
+┌───────────────────────────────────────────────────────────────────────────┐
+│  BACKEND (one, chosen by VAULT_BACKEND)                                   │
+│                                                                           │
+│   ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐           │
+│   │    onedrive     │  │     github      │  │      local      │           │
+│   ├─────────────────┤  ├─────────────────┤  ├─────────────────┤           │
+│   │ Microsoft Graph │  │ Contents API    │  │ node:fs         │           │
+│   │ OAuth refresh   │  │ Trees API       │  │ mtime cursor    │           │
+│   │ /children walk  │  │ Compare API     │  │ recursive walk  │           │
+│   │ delta nextLink  │  │ commit sha      │  │ path mtimes     │           │
+│   └─────────────────┘  └─────────────────┘  └─────────────────┘           │
+└───────────────────────────────────────────────────────────────────────────┘
+```
+
+### Why an abstraction instead of three forks
+
+- **One set of skills.** The four `SKILL.md` files name `mcp_vault_*` tools only. Swapping
+  `VAULT_BACKEND` changes where notes are stored without touching a single agent
+  instruction — so a GitHub user runs byte-identical agent behaviour to an OneDrive user.
+- **The contract lives above the store.** `vault-template/AGENTS.md` (layout, frontmatter
+  schema, ten discipline rules) is a property of the vault, not of Microsoft or GitHub. It
+  is unchanged by the backend you pick.
+- **Testability.** The `local` backend has no network and no credentials, so the whole tool
+  surface can be exercised in CI. It is also the fastest way to try the system before
+  committing to an Azure app registration.
+- **Adding a fourth store** is one file: implement the interface, register it in
+  `backends/index.ts`. See CONTRIBUTING.md.
+
+### Change detection differs per backend — and that is fine
+
+`get_changes` returns an **opaque cursor** whose meaning is backend-specific:
+
+| Backend | Cursor is | Meaning of "changed" |
+|---|---|---|
+| `onedrive` | Graph `delta` nextLink URL | Everything Graph reports as touched |
+| `github` | a commit SHA | Files differing between that commit and branch HEAD |
+| `local` | JSON map of `{path: mtimeMs}` | Files whose mtime advanced |
+
+The agents treat the cursor as opaque — they store it in `.meta/delta_token.json` and hand
+it straight back on the next run. No agent needs to know which backend it is talking to.
 
 The three layers have a strict one-way dependency. Sources feed the wiki. The wiki feeds the
 site. Nothing flows backward: the site never writes, the wiki never modifies a source, and
@@ -55,7 +121,7 @@ you never hand-edit the wiki.
 
 ## Components
 
-### `mcp-onedrive` — the bridge
+### `mcp-vault` — the bridge
 
 A [Model Context Protocol](https://modelcontextprotocol.io) server written in TypeScript.
 It exposes eight tools over stdio and holds exactly one long-lived credential: your OAuth

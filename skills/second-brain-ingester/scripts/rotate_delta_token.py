@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Rotate an expired OneDrive delta token.
 
-When `mcp_onedrive_get_changes` returns `400 Invalid version`, the token stored in
+When `mcp_vault_get_changes` returns `400 Invalid version`, the token stored in
 `.meta/delta_token.json` has expired. This performs a full delta (no token), reads
 `@odata.nextLink` out of the response, and writes a fresh token back in the same
 single-field shape the reader expects.
@@ -54,7 +54,7 @@ def find_scripts_dir() -> Path:
 
 sys.path.insert(0, str(find_scripts_dir()))
 
-from _graph import GraphClient, VaultError, load_env  # noqa: E402
+from _graph import GraphClient, VaultError, load_env, require_onedrive_backend  # noqa: E402
 
 # $select=name keeps the delta payload small; we only need the nextLink, not the item bodies.
 DELTA_URL = f"{GRAPH}/me/drive/root/delta?$select=name"
@@ -62,6 +62,7 @@ DELTA_URL = f"{GRAPH}/me/drive/root/delta?$select=name"
 
 def main() -> int:
     load_env()
+    require_onedrive_backend()
     try:
         client = GraphClient()
         token = client.token()

@@ -53,7 +53,7 @@ def find_scripts_dir() -> Path:
 
 sys.path.insert(0, str(find_scripts_dir()))
 
-from _graph import GraphClient, VaultError, load_env  # noqa: E402
+from _graph import GraphClient, VaultError, load_env, require_onedrive_backend  # noqa: E402
 from splice_wiki import label_bare_fences  # noqa: E402
 
 
@@ -83,6 +83,7 @@ def main() -> int:
         return 1
 
     load_env()
+    require_onedrive_backend()
     try:
         client = GraphClient()
         original = client.download_text(cfg["wiki"])
